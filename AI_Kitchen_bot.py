@@ -1,7 +1,7 @@
 from flask import Flask, request
 import telebot
 from telebot import types
-from groq import Groq
+from groq import Client
 import requests
 from io import BytesIO
 import os
@@ -9,11 +9,16 @@ import os
 # --- Конфигурация ---
 from config import TOKEN, GROQ_API_KEY, HF_API_KEY, WEBHOOK_URL
 
+if not TOKEN:
+    raise ValueError("TELEGRAM_TOKEN не задан!")
+if not HF_API_KEY:
+    raise ValueError("HF_API_KEY не задан!")
+if not WEBHOOK_URL:
+    print("Внимание! WEBHOOK_URL не задан, бот будет работать в режиме polling")
+
 bot = telebot.TeleBot(TOKEN)
-client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+client = Client(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 MODEL_NAME = "llama3-70b-8192"
-
-
 
 app = Flask(__name__)
 
@@ -223,97 +228,50 @@ def generate_recipe(chat_id):
         )
 
         recipe = response.choices[0].message.content
-        user_states[chat_id]["recipe_title"] = recipe.split('\n')[0].replace('🍽', '').strip()
-        user_states[chat_id]["full_recipe"] = recipe
+        # Отправка сообщения с рецептом
+        bot.send_message(chat_id, recipe, parse_mode="Markdown")
 
-        bot.send_message(
-            chat_id,
-            recipe,
-            reply_markup=image_request_keyboard(),
-            parse_mode='Markdown'
-        )
+        # Сохраняем рецепт в состоянии
+        user_states[chat_id]["last_recipe"] = recipe
+        user_states[chat_id]["step"] = "waiting_action"
 
-    except Exception as e:
-        bot.send_message(
-            chat_id,
-            f"⚠️ Ошибка генерации рецепта: {str(e)}",
-            reply_markup=main_keyboard()
-        )
-    finally:
-        user_states[chat_id]["step"] = "recipe_ready"
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "generate_image")
-def handle_image_request(call):
-    try:
-        chat_id = call.message.chat.id
-        recipe_title = user_states.get(chat_id, {}).get("recipe_title")
-        if not recipe_title:
-            raise Exception("Название рецепта не найдено")
-
-        bot.send_message(chat_id, "🖌 Генерирую аппетитное изображение... Это займет 10-20 секунд")
-        image_bytes = generate_food_image(f"{recipe_title}, {user_states[chat_id]['cuisine']} кухня")
-
-        bot.send_photo(
-            chat_id,
-            image_bytes,
-            caption=f"🍽 {recipe_title}\n🌍 {user_states[chat_id]['cuisine']} кухня",
-            reply_markup=main_keyboard()
-        )
+        # Предлагаем кнопки для изображения и сохранения
+        bot.send_message(chat_id, "Хотите увидеть изображение блюда или сохранить рецепт в избранное?",
+                         reply_markup=image_request_keyboard())
 
     except Exception as e:
-        bot.send_message(
-            chat_id,
-            f"⚠️ Не удалось сгенерировать изображение: {str(e)}",
-            reply_markup=main_keyboard()
-        )
+        bot.send_message(chat_id, f"Произошла ошибка при создании рецепта:\n{str(e)}")
+        user_states.pop(chat_id, None)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "save_to_favorites")
-def save_to_favorites(call):
-    try:
-        chat_id = call.message.chat.id
-        if "full_recipe" not in user_states.get(chat_id, {}):
-            raise Exception("Рецепт не найден в кеше")
+# --- Обработчики кнопок inline ---
+@bot.callback_query_handler(func=lambda call: True)
+def callback_inline(call):
+    chat_id = call.message.chat.id
 
-        # Здесь должна быть логика сохранения в БД
-        bot.answer_callback_query(
-            call.id,
-            text=f"✅ Рецепт '{user_states[chat_id]['recipe_title']}' сохранён!",
-            show_alert=False
-        )
+    if call.data == "generate_image":
+        if "last_recipe" not in user_states.get(chat_id, {}):
+            bot.answer_callback_query(call.id, "Сначала создайте рецепт.")
+            return
 
-    except Exception as e:
-        bot.answer_callback_query(
-            call.id,
-            text=f"⚠️ Ошибка: {str(e)}",
-            show_alert=True
-        )
+        # Используем название блюда из рецепта для генерации изображения
+        recipe_text = user_states[chat_id]["last_recipe"]
+        # Попытка извлечь название блюда - берём первую строку до перевода строки
+        dish_name = recipe_text.split('\n')[0].replace("🍽", "").strip()
 
+        try:
+            image = generate_food_image(dish_name)
+            bot.send_photo(chat_id, photo=image)
+        except Exception as e:
+            bot.send_message(chat_id, f"Ошибка генерации изображения: {str(e)}")
 
-@bot.message_handler(func=lambda m: m.text == "⭐ Избранное")
-def show_favorites(message):
-    bot.send_message(
-        message.chat.id,
-        "⭐ Ваши сохранённые рецепты:\n\n"
-        "1. Борщ классический (🇷🇺 Русская кухня)\n"
-        "2. Паста карбонара (🇮🇹 Итальянская кухня)\n"
-        "3. Роллы Филадельфия (🇯🇵 Японская кухня)\n\n"
-        "Это демо-версия. В реальном приложении здесь будут ваши сохранённые рецепты.",
-        reply_markup=main_keyboard()
-    )
+    elif call.data == "save_to_favorites":
+        # Здесь можно реализовать сохранение в базу или файл
+        bot.answer_callback_query(call.id, "Функция сохранения пока не реализована.")
+        bot.send_message(chat_id, "Сохранение в избранное пока не реализовано.")
 
 
-@bot.message_handler(func=lambda m: True)
-def handle_other(message):
-    bot.send_message(
-        message.chat.id,
-        "Используйте кнопки меню или /start",
-        reply_markup=main_keyboard()
-    )
-
-
-# --- Flask Webhook ---
+# --- Запуск Flask для webhook ---
 @app.route("/webhook", methods=["POST"])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
@@ -333,4 +291,5 @@ def set_webhook():
 
 
 if __name__ == "__main__":
+    # Запускаем Flask
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
