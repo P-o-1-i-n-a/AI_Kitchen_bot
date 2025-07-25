@@ -1,0 +1,78 @@
+# Конфиденциальные данные
+config.py
+.env
+*.env
+.env.prod
+secrets/
+*.secret
+credentials.json
+
+# Временные файлы бота
+/temp/
+/downloads/
+*.jpg
+*.png
+*.jpeg
+*.webp
+*.bin
+
+# Логи и базы данных
+*.log
+*.sqlite
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+venv/
+env/
+ENV/
+.venv/
+pip-selfcheck.json
+
+# IDE и редакторы
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-*
+*.code-workspace
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Тестовые данные
+/test_data/
+/mock/
+
+# Документация
+/docs/_build/
+/site/
+
+# Миграции (если использовать БД)
+/migrations/
+*.sql
+
+# Кеш
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# Игнорируем конфиги
+.env
+*.env
+secrets/
