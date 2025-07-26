@@ -4,6 +4,7 @@ from telebot import types
 import requests
 from io import BytesIO
 import os
+import re
 
 # --- Импорт клиента Groq с защитой ---
 try:
@@ -50,7 +51,6 @@ def generate_food_image(prompt):
 def main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🍳 Создать рецепт"))
-    markup.add(types.KeyboardButton("⭐ Избранное"))
     return markup
 
 def meal_time_keyboard():
@@ -99,7 +99,6 @@ def diet_keyboard():
 def image_request_keyboard():
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🖼 Показать изображение", callback_data="generate_image"))
-    markup.add(types.InlineKeyboardButton("💾 Сохранить в избранное", callback_data="save_to_favorites"))
     return markup
 
 # --- Обработчики сообщений ---
@@ -180,6 +179,10 @@ def process_ingredients(message):
     user_states[message.chat.id]["ingredients"] = message.text
     generate_recipe(message.chat.id)
 
+def ensure_russian(text):
+    """Удаляет английские фразы из текста"""
+    return re.sub(r'[a-zA-Z]', '', text).strip()
+
 def generate_recipe(chat_id):
     try:
         data = user_states[chat_id]
@@ -188,33 +191,45 @@ def generate_recipe(chat_id):
         if data['ingredients'].lower() == 'что есть в холодильнике?':
             prompt = f"""Придумай рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни, 
             соответствующий {data['diet']} диете. Используй распространённые ингредиенты, которые 
-            обычно есть дома у россиян."""
+            обычно есть дома у россиян. Говори только на русском языке!"""
         else:
             prompt = f"""Составь рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни, 
-            соответствующий {data['diet']} диете, используя: {data['ingredients']}"""
+            соответствующий {data['diet']} диете, используя: {data['ingredients']}. 
+            Говори только на русском языке!"""
 
         prompt += """
-        Формат:
-        🍽 Название
+        Формат (всегда на русском):
+        🍽 Название (только на русском)
         🌍 Кухня: [тип кухни]
         🥗 Диета: [тип диеты]
-        ⏱ Примерное время приготовления
-        📋 Ингредиенты (точные количества)
-        🔪 Пошаговое приготовление
-        📊 КБЖУ на порцию
-        💡 Полезные советы (замена ингредиентов, лайфхаки)"""
+        ⏱ Время приготовления: [время]
+        📋 Ингредиенты (точные количества в граммах/мл):
+        - Ингредиент 1: количество
+        - Ингредиент 2: количество
+        🔪 Пошаговое приготовление:
+        1. Шаг 1
+        2. Шаг 2
+        📊 КБЖУ на порцию (указать вес порции в граммах):
+        - Калории: [ккал]
+        - Белки: [г]
+        - Жиры: [г]
+        - Углеводы: [г]
+        💡 Полезные советы:"""
 
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system",
-                 "content": "Ты профессиональный шеф-повар, специализирующийся на международной кухне"},
+                {
+                    "role": "system",
+                    "content": "Ты профессиональный шеф-повар. Говори только на русском языке! "
+                    "Всегда указывай вес порции в граммах при расчёте КБЖУ."
+                },
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7
         )
 
-        recipe = response.choices[0].message.content
+        recipe = ensure_russian(response.choices[0].message.content)
         user_states[chat_id]["recipe_title"] = recipe.split('\n')[0].replace('🍽', '').strip()
         user_states[chat_id]["full_recipe"] = recipe
 
@@ -259,44 +274,11 @@ def handle_image_request(call):
             reply_markup=main_keyboard()
         )
 
-@bot.callback_query_handler(func=lambda call: call.data == "save_to_favorites")
-def save_to_favorites(call):
-    try:
-        chat_id = call.message.chat.id
-        if "full_recipe" not in user_states.get(chat_id, {}):
-            raise Exception("Рецепт не найден в кеше")
-
-        # Здесь должна быть логика сохранения в БД
-        bot.answer_callback_query(
-            call.id,
-            text=f"✅ Рецепт '{user_states[chat_id]['recipe_title']}' сохранён!",
-            show_alert=False
-        )
-
-    except Exception as e:
-        bot.answer_callback_query(
-            call.id,
-            text=f"⚠️ Ошибка: {str(e)}",
-            show_alert=True
-        )
-
-@bot.message_handler(func=lambda m: m.text == "⭐ Избранное")
-def show_favorites(message):
-    bot.send_message(
-        message.chat.id,
-        "⭐ Ваши сохранённые рецепты:\n\n"
-        "1. Борщ классический (🇷🇺 Русская кухня)\n"
-        "2. Паста карбонара (🇮🇹 Итальянская кухня)\n"
-        "3. Роллы Филадельфия (🇯🇵 Японская кухня)\n\n"
-        "Это демо-версия. В реальном приложении здесь будут ваши сохранённые рецепты.",
-        reply_markup=main_keyboard()
-    )
-
 @bot.message_handler(func=lambda m: True)
 def handle_other(message):
     bot.send_message(
         message.chat.id,
-        "Используйте кнопки меню или /start",
+        "Используйте кнопку «🍳 Создать рецепт» или /start",
         reply_markup=main_keyboard()
     )
 
