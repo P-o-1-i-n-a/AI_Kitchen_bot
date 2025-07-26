@@ -20,6 +20,7 @@ from config import TOKEN, GROQ_API_KEY, WEBHOOK_URL
 bot = telebot.TeleBot(TOKEN)
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 MODEL_NAME = "llama3-70b-8192"
+CHANNEL_LINK = "https://t.me/ai_kitchen_channel"
 
 app = Flask(__name__)
 
@@ -32,6 +33,7 @@ def main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🍳 Создать рецепт"))
     markup.add(types.KeyboardButton("📜 Публичная оферта"))
+    markup.add(types.KeyboardButton("📢 Наш кулинарный канал"))
     return markup
 
 
@@ -86,7 +88,8 @@ def send_welcome(message):
         message.chat.id,
         "👨‍🍳 Привет! Я - кулинарный бот с генерацией рецептов.\n"
         "⚠️ Рецепты создаются искусственным интеллектом (AI) и могут содержать неточности.\n\n"
-        "Нажмите кнопку ниже, чтобы создать рецепт ↓",
+        "Нажмите кнопку ниже, чтобы создать рецепт ↓\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
         reply_markup=main_keyboard()
     )
 
@@ -98,8 +101,23 @@ def show_offer(message):
         "📄 Публичная оферта:\n\n"
         "1. Все рецепты генерируются искусственным интеллектом и не являются профессиональной рекомендацией.\n"
         "2. Вы несете ответственность за проверку ингредиентов на аллергены и свежесть.\n"
-        "3. Запрещено использовать бота для создания вредоносного контента.\n\n",
+        "3. Запрещено использовать бота для создания вредоносного контента.\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
         disable_web_page_preview=True
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == "📢 Наш кулинарный канал")
+def show_channel(message):
+    markup = types.InlineKeyboardMarkup()
+    btn_channel = types.InlineKeyboardButton("🍳 AI Kitchen Channel", url=CHANNEL_LINK)
+    markup.add(btn_channel)
+    
+    bot.send_message(
+        message.chat.id,
+        "🔔 Подпишитесь на наш кулинарный канал с рецептами и кулинарными лайфхаками!\n"
+        "Там вы найдете много интересных рецептов и кулинарных идей!",
+        reply_markup=markup
     )
 
 
@@ -108,7 +126,8 @@ def ask_meal_time(message):
     user_states[message.chat.id] = {"step": "waiting_meal_time"}
     bot.send_message(
         message.chat.id,
-        "🕒 Для какого приёма пищи нужен рецепт?",
+        "🕒 Для какого приёма пищи нужен рецепт?\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
         reply_markup=meal_time_keyboard()
     )
 
@@ -116,7 +135,12 @@ def ask_meal_time(message):
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_meal_time")
 def ask_cuisine(message):
     if message.text not in ["🌅 Завтрак", "🌇 Обед", "🌃 Ужин", "☕ Перекус"]:
-        bot.send_message(message.chat.id, "Пожалуйста, выберите вариант из кнопок ↓", reply_markup=meal_time_keyboard())
+        bot.send_message(
+            message.chat.id, 
+            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
+            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
+            reply_markup=meal_time_keyboard()
+        )
         return
 
     user_states[message.chat.id] = {
@@ -125,7 +149,8 @@ def ask_cuisine(message):
     }
     bot.send_message(
         message.chat.id,
-        "🌍 Выберите кухню:",
+        "🌍 Выберите кухню:\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
         reply_markup=cuisine_keyboard()
     )
 
@@ -137,14 +162,20 @@ def ask_diet(message):
                       "🇲🇽 Мексиканская", "🇮🇳 Индийская"]
 
     if message.text not in valid_cuisines:
-        bot.send_message(message.chat.id, "Пожалуйста, выберите вариант из кнопок ↓", reply_markup=cuisine_keyboard())
+        bot.send_message(
+            message.chat.id, 
+            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
+            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
+            reply_markup=cuisine_keyboard()
+        )
         return
 
     user_states[message.chat.id]["cuisine"] = message.text
     user_states[message.chat.id]["step"] = "waiting_diet"
     bot.send_message(
         message.chat.id,
-        "🥗 Есть ли диетические ограничения?",
+        "🥗 Есть ли диетические ограничения?\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
         reply_markup=diet_keyboard()
     )
 
@@ -155,7 +186,12 @@ def process_diet_choice(message):
                    "💪 Высокобелковые", "☪️ Халяль", "☦️ Постная"]
 
     if message.text not in valid_diets:
-        bot.send_message(message.chat.id, "Пожалуйста, выберите вариант из кнопок ↓", reply_markup=diet_keyboard())
+        bot.send_message(
+            message.chat.id, 
+            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
+            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
+            reply_markup=diet_keyboard()
+        )
         return
 
     user_states[message.chat.id]["diet_type"] = message.text
@@ -165,7 +201,8 @@ def process_diet_choice(message):
         bot.send_message(
             message.chat.id,
             "📝 Укажите продукты, которые нужно исключить (через запятую):\n"
-            "Пример: орехи, молоко, морепродукты",
+            "Пример: орехи, молоко, морепродукты\n\n"
+            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
             reply_markup=types.ReplyKeyboardRemove()
         )
     else:
@@ -177,7 +214,8 @@ def ask_for_ingredients(chat_id):
     bot.send_message(
         chat_id,
         "📝 Введите ингредиенты через запятую:\n"
-        "Пример: 2 яйца, 100г муки, 1 ст.л. масла",
+        "Пример: 2 яйца, 100г муки, 1 ст.л. масла\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
         reply_markup=types.ReplyKeyboardRemove()
     )
 
@@ -192,6 +230,13 @@ def process_allergies(message):
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_ingredients")
 def process_ingredients(message):
     user_states[message.chat.id]["ingredients"] = message.text
+    bot.send_message(
+        message.chat.id,
+        "🔄 Генерирую рецепт... Пожалуйста, подождите.\n"
+        "Это может занять до 30 секунд.\n\n"
+        "ℹ️ Если бот не реагирует более минуты, нажмите /start",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
     generate_recipe(message.chat.id)
 
 
@@ -258,17 +303,31 @@ def generate_recipe(chat_id):
         )
 
         recipe = ensure_russian(response.choices[0].message.content)
+        
+        # Добавляем кнопку канала к сообщению с рецептом
+        markup = types.InlineKeyboardMarkup()
+        btn_channel = types.InlineKeyboardButton("🍳 Наш кулинарный канал", url=CHANNEL_LINK)
+        markup.add(btn_channel)
+        
         bot.send_message(
             chat_id,
             recipe,
             parse_mode='Markdown',
+            reply_markup=markup
+        )
+        
+        # Возвращаем основную клавиатуру
+        bot.send_message(
+            chat_id,
+            "Что будем делать дальше?",
             reply_markup=main_keyboard()
         )
 
     except Exception as e:
         bot.send_message(
             chat_id,
-            f"⚠️ Ошибка генерации рецепта: {str(e)}",
+            f"⚠️ Ошибка генерации рецепта: {str(e)}\n\n"
+            "Попробуйте еще раз или нажмите /start",
             reply_markup=main_keyboard()
         )
     finally:
@@ -279,7 +338,8 @@ def generate_recipe(chat_id):
 def handle_other(message):
     bot.send_message(
         message.chat.id,
-        "Используйте кнопку «🍳 Создать рецепт» или /start",
+        "Используйте кнопку «🍳 Создать рецепт» или /start\n\n"
+        "ℹ️ Если бот не реагирует, нажмите /start",
         reply_markup=main_keyboard()
     )
 
