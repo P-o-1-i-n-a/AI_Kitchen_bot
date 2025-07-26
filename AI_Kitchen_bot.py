@@ -1,8 +1,7 @@
 from flask import Flask, request
 import telebot
 from telebot import types
-import requests
-from io import BytesIO
+from groq import Groq
 import os
 import re
 
@@ -16,7 +15,7 @@ except ImportError as e:
     ) from e
 
 # --- Конфигурация ---
-from config import TOKEN, GROQ_API_KEY, HF_API_KEY, WEBHOOK_URL
+from config import TOKEN, GROQ_API_KEY, WEBHOOK_URL
 
 bot = telebot.TeleBot(TOKEN)
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
@@ -27,30 +26,11 @@ app = Flask(__name__)
 # --- Состояния пользователей ---
 user_states = {}
 
-# --- Генерация изображений ---
-def generate_food_image(prompt):
-    API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    try:
-        response = requests.post(
-            API_URL,
-            headers=headers,
-            json={"inputs": f"реалистичное фото блюда: {prompt}, профессиональная фотография, высокое качество, 4K"}
-        )
-        if response.status_code == 403:
-            raise Exception("Доступ запрещён. Проверьте API-ключ")
-        elif response.status_code == 429:
-            raise Exception("Лимит запросов исчерпан")
-        elif response.status_code != 200:
-            raise Exception(f"Ошибка API: {response.text}")
-        return BytesIO(response.content)
-    except Exception as e:
-        raise Exception(f"Ошибка генерации: {str(e)}")
-
 # --- Клавиатуры ---
 def main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🍳 Создать рецепт"))
+    markup.add(types.KeyboardButton("📜 Публичная оферта"))
     return markup
 
 def meal_time_keyboard():
@@ -76,8 +56,7 @@ def cuisine_keyboard():
         types.KeyboardButton("🇹🇷 Турецкая"),
         types.KeyboardButton("🇨🇳 Китайская"),
         types.KeyboardButton("🇲🇽 Мексиканская"),
-        types.KeyboardButton("🇮🇳 Индийская"),
-        types.KeyboardButton("🌍 Другая")
+        types.KeyboardButton("🇮🇳 Индийская")
     ]
     markup.add(*buttons)
     return markup
@@ -85,20 +64,14 @@ def cuisine_keyboard():
 def diet_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     buttons = [
-        types.KeyboardButton("🥩 Обычная"),
-        types.KeyboardButton("🌱 Вегетарианская"),
-        types.KeyboardButton("🐄 Без молочных"),
-        types.KeyboardButton("🌾 Без глютена"),
-        types.KeyboardButton("🍯 Кето"),
-        types.KeyboardButton("☦️ Постная"),
-        types.KeyboardButton("⚡ Нет ограничений")
+        types.KeyboardButton("🚫 Нет ограничений"),
+        types.KeyboardButton("⚠️ Аллергии"),
+        types.KeyboardButton("⚖️ Низкокалорийные"),
+        types.KeyboardButton("💪 Высокобелковые"),
+        types.KeyboardButton("☪️ Халяль"),
+        types.KeyboardButton("☦️ Постная")
     ]
     markup.add(*buttons)
-    return markup
-
-def image_request_keyboard():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🖼 Показать изображение", callback_data="generate_image"))
     return markup
 
 # --- Обработчики сообщений ---
@@ -106,9 +79,22 @@ def image_request_keyboard():
 def send_welcome(message):
     bot.send_message(
         message.chat.id,
-        "👨‍🍳 Привет! Я - кулинарный бот с генерацией изображений.\n"
+        "👨‍🍳 Привет! Я - кулинарный бот с генерацией рецептов.\n"
+        "⚠️ Рецепты создаются искусственным интеллектом (AI) и могут содержать неточности.\n\n"
         "Нажмите кнопку ниже, чтобы создать рецепт ↓",
         reply_markup=main_keyboard()
+    )
+
+@bot.message_handler(func=lambda m: m.text == "📜 Публичная оферта")
+def show_offer(message):
+    bot.send_message(
+        message.chat.id,
+        "📄 Публичная оферта:\n\n"
+        "1. Все рецепты генерируются искусственным интеллектом и не являются профессиональной рекомендацией.\n"
+        "2. Вы несете ответственность за проверку ингредиентов на аллергены и свежесть.\n"
+        "3. Запрещено использовать бота для создания вредоносного контента.\n\n"
+        "Полная версия: https://example.com/offer",
+        disable_web_page_preview=True
     )
 
 @bot.message_handler(func=lambda m: m.text == "🍳 Создать рецепт")
@@ -132,15 +118,15 @@ def ask_cuisine(message):
     }
     bot.send_message(
         message.chat.id,
-        "🌍 Выберите кухню (топ-10 для России):",
+        "🌍 Выберите кухню:",
         reply_markup=cuisine_keyboard()
     )
 
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_cuisine")
 def ask_diet(message):
     valid_cuisines = ["🇷🇺 Русская", "🇮🇹 Итальянская", "🇯🇵 Японская", "🇬🇪 Кавказская",
-                      "🇺🇸 Американская", "🇫🇷 Французская", "🇹🇷 Турецкая", "🇨🇳 Китайская",
-                      "🇲🇽 Мексиканская", "🇮🇳 Индийская", "🌍 Другая"]
+                     "🇺🇸 Американская", "🇫🇷 Французская", "🇹🇷 Турецкая", "🇨🇳 Китайская",
+                     "🇲🇽 Мексиканская", "🇮🇳 Индийская"]
 
     if message.text not in valid_cuisines:
         bot.send_message(message.chat.id, "Пожалуйста, выберите вариант из кнопок ↓", reply_markup=cuisine_keyboard())
@@ -150,29 +136,47 @@ def ask_diet(message):
     user_states[message.chat.id]["step"] = "waiting_diet"
     bot.send_message(
         message.chat.id,
-        "🥗 Есть ли диетические ограничения?\n"
-        "☦️ Постная - вариант для православных постов",
+        "🥗 Есть ли диетические ограничения?",
         reply_markup=diet_keyboard()
     )
 
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_diet")
-def ask_ingredients(message):
-    valid_diets = ["🥩 Обычная", "🌱 Вегетарианская", "🐄 Без молочных",
-                   "🌾 Без глютена", "🍯 Кето", "☦️ Постная", "⚡ Нет ограничений"]
+def process_diet_choice(message):
+    valid_diets = ["🚫 Нет ограничений", "⚠️ Аллергии", "⚖️ Низкокалорийные", 
+                  "💪 Высокобелковые", "☪️ Халяль", "☦️ Постная"]
 
     if message.text not in valid_diets:
         bot.send_message(message.chat.id, "Пожалуйста, выберите вариант из кнопок ↓", reply_markup=diet_keyboard())
         return
 
-    user_states[message.chat.id]["diet"] = message.text
-    user_states[message.chat.id]["step"] = "waiting_ingredients"
+    user_states[message.chat.id]["diet_type"] = message.text
+    
+    if message.text == "⚠️ Аллергии":
+        user_states[message.chat.id]["step"] = "waiting_allergies"
+        bot.send_message(
+            message.chat.id,
+            "📝 Укажите продукты, которые нужно исключить (через запятую):\n"
+            "Пример: орехи, молоко, морепродукты",
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+    else:
+        user_states[message.chat.id]["step"] = "waiting_ingredients"
+        ask_for_ingredients(message.chat.id)
+
+def ask_for_ingredients(chat_id):
     bot.send_message(
-        message.chat.id,
+        chat_id,
         "📝 Введите ингредиенты через запятую:\n"
         "Пример: 2 яйца, 100г муки, 1 ст.л. масла\n"
         "Или напишите 'что есть в холодильнике?' для генерации по списку",
         reply_markup=types.ReplyKeyboardRemove()
     )
+
+@bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_allergies")
+def process_allergies(message):
+    user_states[message.chat.id]["allergies"] = message.text
+    user_states[message.chat.id]["step"] = "waiting_ingredients"
+    ask_for_ingredients(message.chat.id)
 
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_ingredients")
 def process_ingredients(message):
@@ -188,13 +192,24 @@ def generate_recipe(chat_id):
         data = user_states[chat_id]
         bot.send_chat_action(chat_id, 'typing')
 
+        # Формируем промпт с учетом диеты
+        diet_prompt = ""
+        if data.get('diet_type') == "⚠️ Аллергии":
+            diet_prompt = f" Исключи: {data.get('allergies', '')}."
+        elif data['diet_type'] == "⚖️ Низкокалорийные":
+            diet_prompt = " Сделай рецепт низкокалорийным (менее 300 ккал на порцию)."
+        elif data['diet_type'] == "💪 Высокобелковые":
+            diet_prompt = " Сделай рецепт с высоким содержанием белка (не менее 20г на порцию)."
+        elif data['diet_type'] == "☪️ Халяль":
+            diet_prompt = " Учитывай правила халяль (без свинины, алкоголя и т.д.)."
+        elif data['diet_type'] == "☦️ Постная":
+            diet_prompt = " Учитывай православные постные правила (без мяса, молока, яиц)."
+
         if data['ingredients'].lower() == 'что есть в холодильнике?':
-            prompt = f"""Придумай рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни, 
-            соответствующий {data['diet']} диете. Используй распространённые ингредиенты, которые 
-            обычно есть дома у россиян. Говори только на русском языке!"""
+            prompt = f"""Придумай рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни.{diet_prompt}
+            Используй распространённые ингредиенты, которые обычно есть дома у россиян. Говори только на русском языке!"""
         else:
-            prompt = f"""Составь рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни, 
-            соответствующий {data['diet']} диете, используя: {data['ingredients']}. 
+            prompt = f"""Составь рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни, используя: {data['ingredients']}.{diet_prompt}
             Говори только на русском языке!"""
 
         prompt += """
@@ -230,14 +245,11 @@ def generate_recipe(chat_id):
         )
 
         recipe = ensure_russian(response.choices[0].message.content)
-        user_states[chat_id]["recipe_title"] = recipe.split('\n')[0].replace('🍽', '').strip()
-        user_states[chat_id]["full_recipe"] = recipe
-
         bot.send_message(
             chat_id,
             recipe,
-            reply_markup=image_request_keyboard(),
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            reply_markup=main_keyboard()
         )
 
     except Exception as e:
@@ -247,32 +259,7 @@ def generate_recipe(chat_id):
             reply_markup=main_keyboard()
         )
     finally:
-        user_states[chat_id]["step"] = "recipe_ready"
-
-@bot.callback_query_handler(func=lambda call: call.data == "generate_image")
-def handle_image_request(call):
-    try:
-        chat_id = call.message.chat.id
-        recipe_title = user_states.get(chat_id, {}).get("recipe_title")
-        if not recipe_title:
-            raise Exception("Название рецепта не найдено")
-
-        bot.send_message(chat_id, "🖌 Генерирую аппетитное изображение... Это займет 10-20 секунд")
-        image_bytes = generate_food_image(f"{recipe_title}, {user_states[chat_id]['cuisine']} кухня")
-
-        bot.send_photo(
-            chat_id,
-            image_bytes,
-            caption=f"🍽 {recipe_title}\n🌍 {user_states[chat_id]['cuisine']} кухня",
-            reply_markup=main_keyboard()
-        )
-
-    except Exception as e:
-        bot.send_message(
-            chat_id,
-            f"⚠️ Не удалось сгенерировать изображение: {str(e)}",
-            reply_markup=main_keyboard()
-        )
+        user_states[chat_id]["step"] = "done"
 
 @bot.message_handler(func=lambda m: True)
 def handle_other(message):
