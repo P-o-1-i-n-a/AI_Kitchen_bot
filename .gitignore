@@ -1,8 +1,10 @@
-### 🔒 Конфиденциальные данные
-/config.py
+### 🔒 Конфиденциальные данные (Critical)
 /.env*
+!/.env.example  # Исключение - можно включить пример
+/config.py
 /secrets/
 /credentials/
+/keys/
 *.secret
 *.key
 *.pem
@@ -12,12 +14,20 @@
 /config_*.json
 /firebase.json
 /serviceAccount.json
+/google-credentials.json
 
-### 🗑 Временные файлы бота
+### 🤖 Специфичные файлы Telegram-бота (Bot-specific)
+/webhook_cert.pem
+/bot_session.dat
+/user_states/  # Если храните состояния в файлах
+/bot_database.db  # Пример имени файла БД бота
+
+### 🗑 Временные файлы (Temporary)
 /temp/
 /tmp/
 /downloads/
 /uploads/
+/cache/
 *.jpg
 *.png
 *.jpeg
@@ -25,17 +35,22 @@
 *.bin
 *.tmp
 *.temp
+*.webm
+*.ogg
 
-### 📊 Логи и базы данных
+### 📊 Логи и данные (Logs & Data)
 *.log
-*.sqlite
-*.db
-*.db-journal
+*.sqlite*
+*.db*
 *.sql
 *.dump
 *.backup
+/logs/
+/data/
+/storage/
+/exports/
 
-### 🐍 Python
+### 🐍 Python (Python-specific)
 __pycache__/
 *.py[cod]
 *.pyo
@@ -52,9 +67,12 @@ __pycache__/
 /ENV/
 /.venv/
 /.python-version
-pip-selfcheck.json
+/pip-selfcheck.json
+/requirements.lock
+/poetry.lock
+/Pipfile.lock
 
-### 💻 IDE и редакторы
+### 💻 IDE и редакторы (IDEs)
 /.idea/
 /.vscode/
 /.vs/
@@ -63,63 +81,78 @@ pip-selfcheck.json
 *.sublime-*
 *.code-workspace
 *.sublime-workspace
+*.history
 
-### 🖥 Системные файлы
+### 🖥 Системные файлы (System)
 .DS_Store
 Thumbs.db
 desktop.ini
 *.lnk
+*.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 
-### 📓 Jupyter/Colab
+### 📓 Jupyter/Colab (Notebooks)
 .ipynb_checkpoints/
 *.ipynb
 *.ipynb_checkpoints
+/.ipython/
 
-### 🧪 Тестовые данные
+### 🧪 Тесты (Tests)
 /test_data/
 /mock_data/
 /fixtures/
 /samples/
+/coverage/
+/.coverage
+/htmlcov/
+*.cover
+*.mo
+*.pot
 
-### 📚 Документация
+### 📚 Документация (Documentation)
 /docs/_build/
 /site/
 /docs/html/
 /docs/doctrees/
+/docs/api/
+/docs/build/
 
-### 🗃 Миграции (если используется БД)
+### 🗃 Миграции (Migrations)
 /migrations/
 /alembic/versions/
 *.sql
 *.migration
+/flask_migrate/
 
-### 🗄 Кеш
-.cache/
-.pytest_cache/
-.mypy_cache/
-__pycache__/
-/.mypy_cache/
-/.pytest_cache/
-/.ruff_cache/
-
-### 🐳 Docker
+### 🐳 Docker (Docker)
 docker-compose.override.yml
 .env.dev
 .env.test
+.env.prod
+/docker-compose.*.yml
+/.docker/
+*.dockerfile
+docker-compose.yml  # Если не хотите коммитить
 
-### 🔄 Дополнительные исключения
+### 🔄 Дополнительно (Miscellaneous)
 # Файлы редакторов
 *~
 *.sw[nop]
 *.bak
 *.sublime-*
+*.sublime-project
+*.sublime-workspace
 
 # Файлы пакетных менеджеров
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+bun.lockb
 
 # Файлы операционных систем
 ehthumbs.db
 [Tt]humbs.db
 *.stackdump
+*.luarc.json
