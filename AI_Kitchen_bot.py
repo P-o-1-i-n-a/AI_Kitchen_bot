@@ -26,12 +26,14 @@ app = Flask(__name__)
 # --- Состояния пользователей ---
 user_states = {}
 
+
 # --- Клавиатуры ---
 def main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🍳 Создать рецепт"))
     markup.add(types.KeyboardButton("📜 Публичная оферта"))
     return markup
+
 
 def meal_time_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -43,6 +45,7 @@ def meal_time_keyboard():
     ]
     markup.add(*buttons)
     return markup
+
 
 def cuisine_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
@@ -61,6 +64,7 @@ def cuisine_keyboard():
     markup.add(*buttons)
     return markup
 
+
 def diet_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     buttons = [
@@ -74,6 +78,7 @@ def diet_keyboard():
     markup.add(*buttons)
     return markup
 
+
 # --- Обработчики сообщений ---
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -84,6 +89,7 @@ def send_welcome(message):
         "Нажмите кнопку ниже, чтобы создать рецепт ↓",
         reply_markup=main_keyboard()
     )
+
 
 @bot.message_handler(func=lambda m: m.text == "📜 Публичная оферта")
 def show_offer(message):
@@ -96,6 +102,7 @@ def show_offer(message):
         disable_web_page_preview=True
     )
 
+
 @bot.message_handler(func=lambda m: m.text == "🍳 Создать рецепт")
 def ask_meal_time(message):
     user_states[message.chat.id] = {"step": "waiting_meal_time"}
@@ -104,6 +111,7 @@ def ask_meal_time(message):
         "🕒 Для какого приёма пищи нужен рецепт?",
         reply_markup=meal_time_keyboard()
     )
+
 
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_meal_time")
 def ask_cuisine(message):
@@ -121,11 +129,12 @@ def ask_cuisine(message):
         reply_markup=cuisine_keyboard()
     )
 
+
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_cuisine")
 def ask_diet(message):
     valid_cuisines = ["🇷🇺 Русская", "🇮🇹 Итальянская", "🇯🇵 Японская", "🇬🇪 Кавказская",
-                     "🇺🇸 Американская", "🇫🇷 Французская", "🇹🇷 Турецкая", "🇨🇳 Китайская",
-                     "🇲🇽 Мексиканская", "🇮🇳 Индийская"]
+                      "🇺🇸 Американская", "🇫🇷 Французская", "🇹🇷 Турецкая", "🇨🇳 Китайская",
+                      "🇲🇽 Мексиканская", "🇮🇳 Индийская"]
 
     if message.text not in valid_cuisines:
         bot.send_message(message.chat.id, "Пожалуйста, выберите вариант из кнопок ↓", reply_markup=cuisine_keyboard())
@@ -139,17 +148,18 @@ def ask_diet(message):
         reply_markup=diet_keyboard()
     )
 
+
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_diet")
 def process_diet_choice(message):
-    valid_diets = ["🚫 Нет ограничений", "⚠️ Аллергии", "⚖️ Низкокалорийные", 
-                  "💪 Высокобелковые", "☪️ Халяль", "☦️ Постная"]
+    valid_diets = ["🚫 Нет ограничений", "⚠️ Аллергии", "⚖️ Низкокалорийные",
+                   "💪 Высокобелковые", "☪️ Халяль", "☦️ Постная"]
 
     if message.text not in valid_diets:
         bot.send_message(message.chat.id, "Пожалуйста, выберите вариант из кнопок ↓", reply_markup=diet_keyboard())
         return
 
     user_states[message.chat.id]["diet_type"] = message.text
-    
+
     if message.text == "⚠️ Аллергии":
         user_states[message.chat.id]["step"] = "waiting_allergies"
         bot.send_message(
@@ -162,14 +172,15 @@ def process_diet_choice(message):
         user_states[message.chat.id]["step"] = "waiting_ingredients"
         ask_for_ingredients(message.chat.id)
 
+
 def ask_for_ingredients(chat_id):
     bot.send_message(
         chat_id,
         "📝 Введите ингредиенты через запятую:\n"
-        "Пример: 2 яйца, 100г муки, 1 ст.л. масла\n"
-        "Или напишите 'что есть в холодильнике?' для генерации по списку",
+        "Пример: 2 яйца, 100г муки, 1 ст.л. масла",
         reply_markup=types.ReplyKeyboardRemove()
     )
+
 
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_allergies")
 def process_allergies(message):
@@ -177,14 +188,17 @@ def process_allergies(message):
     user_states[message.chat.id]["step"] = "waiting_ingredients"
     ask_for_ingredients(message.chat.id)
 
+
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_ingredients")
 def process_ingredients(message):
     user_states[message.chat.id]["ingredients"] = message.text
     generate_recipe(message.chat.id)
 
+
 def ensure_russian(text):
     """Удаляет английские фразы из текста"""
     return re.sub(r'[a-zA-Z]', '', text).strip()
+
 
 def generate_recipe(chat_id):
     try:
@@ -236,7 +250,7 @@ def generate_recipe(chat_id):
                 {
                     "role": "system",
                     "content": "Ты профессиональный шеф-повар. Говори только на русском языке! "
-                    "Всегда указывай вес порции в граммах при расчёте КБЖУ."
+                               "Всегда указывай вес порции в граммах при расчёте КБЖУ."
                 },
                 {"role": "user", "content": prompt}
             ],
@@ -260,6 +274,7 @@ def generate_recipe(chat_id):
     finally:
         user_states[chat_id]["step"] = "done"
 
+
 @bot.message_handler(func=lambda m: True)
 def handle_other(message):
     bot.send_message(
@@ -267,6 +282,7 @@ def handle_other(message):
         "Используйте кнопку «🍳 Создать рецепт» или /start",
         reply_markup=main_keyboard()
     )
+
 
 # --- Flask Webhook ---
 @app.route("/webhook", methods=["POST"])
@@ -279,11 +295,13 @@ def webhook():
     else:
         return "Unsupported Media Type", 415
 
+
 @app.route("/set_webhook", methods=["GET"])
 def set_webhook():
     bot.remove_webhook()
     success = bot.set_webhook(url=WEBHOOK_URL)
     return ("Webhook установлен" if success else "Ошибка установки webhook"), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
