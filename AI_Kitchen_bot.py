@@ -1,25 +1,30 @@
 from flask import Flask, request
 import telebot
 from telebot import types
-from groq import Groq
 import requests
 from io import BytesIO
 import os
+
+# --- Импорт клиента Groq с защитой ---
+try:
+    from groq import Groq
+except ImportError as e:
+    raise ImportError(
+        "Не удалось импортировать класс Groq. "
+        "Проверь, что библиотека groq установлена (pip install groq)."
+    ) from e
 
 # --- Конфигурация ---
 from config import TOKEN, GROQ_API_KEY, HF_API_KEY, WEBHOOK_URL
 
 bot = telebot.TeleBot(TOKEN)
-
-# Настройка клиента Groq
-client = Groq(api_key=GROQ_API_KEY)
+client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 MODEL_NAME = "llama3-70b-8192"
 
 app = Flask(__name__)
 
 # --- Состояния пользователей ---
 user_states = {}
-
 
 # --- Генерация изображений ---
 def generate_food_image(prompt):
@@ -41,14 +46,12 @@ def generate_food_image(prompt):
     except Exception as e:
         raise Exception(f"Ошибка генерации: {str(e)}")
 
-
 # --- Клавиатуры ---
 def main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🍳 Создать рецепт"))
     markup.add(types.KeyboardButton("⭐ Избранное"))
     return markup
-
 
 def meal_time_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -60,7 +63,6 @@ def meal_time_keyboard():
     ]
     markup.add(*buttons)
     return markup
-
 
 def cuisine_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
@@ -80,7 +82,6 @@ def cuisine_keyboard():
     markup.add(*buttons)
     return markup
 
-
 def diet_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     buttons = [
@@ -95,13 +96,11 @@ def diet_keyboard():
     markup.add(*buttons)
     return markup
 
-
 def image_request_keyboard():
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🖼 Показать изображение", callback_data="generate_image"))
     markup.add(types.InlineKeyboardButton("💾 Сохранить в избранное", callback_data="save_to_favorites"))
     return markup
-
 
 # --- Обработчики сообщений ---
 @bot.message_handler(commands=['start', 'help'])
@@ -113,7 +112,6 @@ def send_welcome(message):
         reply_markup=main_keyboard()
     )
 
-
 @bot.message_handler(func=lambda m: m.text == "🍳 Создать рецепт")
 def ask_meal_time(message):
     user_states[message.chat.id] = {"step": "waiting_meal_time"}
@@ -122,7 +120,6 @@ def ask_meal_time(message):
         "🕒 Для какого приёма пищи нужен рецепт?",
         reply_markup=meal_time_keyboard()
     )
-
 
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_meal_time")
 def ask_cuisine(message):
@@ -139,7 +136,6 @@ def ask_cuisine(message):
         "🌍 Выберите кухню (топ-10 для России):",
         reply_markup=cuisine_keyboard()
     )
-
 
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_cuisine")
 def ask_diet(message):
@@ -160,7 +156,6 @@ def ask_diet(message):
         reply_markup=diet_keyboard()
     )
 
-
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_diet")
 def ask_ingredients(message):
     valid_diets = ["🥩 Обычная", "🌱 Вегетарианская", "🐄 Без молочных",
@@ -180,12 +175,10 @@ def ask_ingredients(message):
         reply_markup=types.ReplyKeyboardRemove()
     )
 
-
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("step") == "waiting_ingredients")
 def process_ingredients(message):
     user_states[message.chat.id]["ingredients"] = message.text
     generate_recipe(message.chat.id)
-
 
 def generate_recipe(chat_id):
     try:
@@ -241,7 +234,6 @@ def generate_recipe(chat_id):
     finally:
         user_states[chat_id]["step"] = "recipe_ready"
 
-
 @bot.callback_query_handler(func=lambda call: call.data == "generate_image")
 def handle_image_request(call):
     try:
@@ -267,7 +259,6 @@ def handle_image_request(call):
             reply_markup=main_keyboard()
         )
 
-
 @bot.callback_query_handler(func=lambda call: call.data == "save_to_favorites")
 def save_to_favorites(call):
     try:
@@ -275,6 +266,7 @@ def save_to_favorites(call):
         if "full_recipe" not in user_states.get(chat_id, {}):
             raise Exception("Рецепт не найден в кеше")
 
+        # Здесь должна быть логика сохранения в БД
         bot.answer_callback_query(
             call.id,
             text=f"✅ Рецепт '{user_states[chat_id]['recipe_title']}' сохранён!",
@@ -288,7 +280,6 @@ def save_to_favorites(call):
             show_alert=True
         )
 
-
 @bot.message_handler(func=lambda m: m.text == "⭐ Избранное")
 def show_favorites(message):
     bot.send_message(
@@ -301,7 +292,6 @@ def show_favorites(message):
         reply_markup=main_keyboard()
     )
 
-
 @bot.message_handler(func=lambda m: True)
 def handle_other(message):
     bot.send_message(
@@ -309,7 +299,6 @@ def handle_other(message):
         "Используйте кнопки меню или /start",
         reply_markup=main_keyboard()
     )
-
 
 # --- Flask Webhook ---
 @app.route("/webhook", methods=["POST"])
@@ -322,13 +311,11 @@ def webhook():
     else:
         return "Unsupported Media Type", 415
 
-
 @app.route("/set_webhook", methods=["GET"])
 def set_webhook():
     bot.remove_webhook()
     success = bot.set_webhook(url=WEBHOOK_URL)
     return ("Webhook установлен" if success else "Ошибка установки webhook"), 200
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
