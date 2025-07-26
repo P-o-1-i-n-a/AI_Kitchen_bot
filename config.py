@@ -1,24 +1,34 @@
 __copyright__ = "Конфиденциально. © 2025 Семейкина П.А."
 
 import os
-from dotenv import load_dotenv
+from typing import List
 
-# Загрузка переменных из .env
-load_dotenv()
+class BotConfig:
+    """Конфигурация для Beget VPS (переменные окружения задаются в панели Beget)"""
 
-# --- Telegram ---
-TOKEN = os.getenv("TELEGRAM_TOKEN")
+    # --- Telegram ---
+    TOKEN: str = os.getenv("TELEGRAM_TOKEN")  # Берётся из переменных окружения сервера
+    
+    # --- Groq ---
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY")
+    GROQ_MODEL: str = "llama3-70b-8192"
+    
+    # --- Настройки ---
+    ADMIN_IDS: List[int] = [
+        int(id) for id in os.getenv("ADMIN_IDS", "1081610697").split(",") 
+        if id.strip()
+    ]
+    
+    # --- Режимы работы ---
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
-# --- Groq ---
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = "llama3-70b-8192"
+    @classmethod
+    def validate(cls):
+        if not cls.TOKEN:
+            raise ValueError("TELEGRAM_TOKEN не задан в переменных окружения Beget")
+        if not cls.GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY не задан в переменных окружения Beget")
 
-# --- Hugging Face ---
-HF_API_KEY = os.getenv("HF_API_KEY")
-HF_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
-
-# --- Webhook ---
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-
-# --- Прочее ---
-DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+# Проверка при импорте
+config = BotConfig()
+config.validate()
