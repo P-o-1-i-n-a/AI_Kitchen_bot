@@ -1,158 +1,26 @@
-### 🔒 Конфиденциальные данные (Critical)
-/.env*
-!/.env.example  # Исключение - можно включить пример
+# Конфиденциальные данные
+.env
+*.env
+!/.env.example
 /config.py
 /secrets/
-/credentials/
-/keys/
-*.secret
-*.key
-*.pem
-*.cert
-*.pub
-*.priv
-/config_*.json
-/firebase.json
-/serviceAccount.json
-/google-credentials.json
 
-### 🤖 Специфичные файлы Telegram-бота (Bot-specific)
-/webhook_cert.pem
-/bot_session.dat
-/user_states/  # Если храните состояния в файлах
-/bot_database.db  # Пример имени файла БД бота
-
-### 🗑 Временные файлы (Temporary)
-/temp/
-/tmp/
-/downloads/
-/uploads/
-/cache/
-*.jpg
-*.png
-*.jpeg
-*.webp
-*.bin
-*.tmp
-*.temp
-*.webm
-*.ogg
-
-### 📊 Логи и данные (Logs & Data)
+# Логи и БД
 *.log
-*.sqlite*
-*.db*
-*.sql
-*.dump
-*.backup
+*.db
+*.sqlite
 /logs/
-/data/
-/storage/
-/exports/
 
-### 🐍 Python (Python-specific)
+# Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
-.Python
-/build/
-/dist/
-/out/
-*.egg-info/
-*.egg
-/venv/
-/env/
-/ENV/
-/.venv/
-/.python-version
-/pip-selfcheck.json
-/requirements.lock
-/poetry.lock
-/Pipfile.lock
+.venv/
+venv/
 
-### 💻 IDE и редакторы (IDEs)
-/.idea/
-/.vscode/
-/.vs/
-*.swp
-*.swo
-*.sublime-*
-*.code-workspace
-*.sublime-workspace
-*.history
+# IDE
+.idea/
+.vscode/
 
-### 🖥 Системные файлы (System)
+# Системные файлы
 .DS_Store
 Thumbs.db
-desktop.ini
-*.lnk
-*.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-
-### 📓 Jupyter/Colab (Notebooks)
-.ipynb_checkpoints/
-*.ipynb
-*.ipynb_checkpoints
-/.ipython/
-
-### 🧪 Тесты (Tests)
-/test_data/
-/mock_data/
-/fixtures/
-/samples/
-/coverage/
-/.coverage
-/htmlcov/
-*.cover
-*.mo
-*.pot
-
-### 📚 Документация (Documentation)
-/docs/_build/
-/site/
-/docs/html/
-/docs/doctrees/
-/docs/api/
-/docs/build/
-
-### 🗃 Миграции (Migrations)
-/migrations/
-/alembic/versions/
-*.sql
-*.migration
-/flask_migrate/
-
-### 🐳 Docker (Docker)
-docker-compose.override.yml
-.env.dev
-.env.test
-.env.prod
-/docker-compose.*.yml
-/.docker/
-*.dockerfile
-docker-compose.yml  # Если не хотите коммитить
-
-### 🔄 Дополнительно (Miscellaneous)
-# Файлы редакторов
-*~
-*.sw[nop]
-*.bak
-*.sublime-*
-*.sublime-project
-*.sublime-workspace
-
-# Файлы пакетных менеджеров
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-bun.lockb
-
-# Файлы операционных систем
-ehthumbs.db
-[Tt]humbs.db
-*.stackdump
-*.luarc.json
