@@ -1,4 +1,4 @@
 aiogram==3.0.0b7
 openai>=1.0.0
 python-dotenv>=1.0.0
-aiohttp==3.8.5  # Эта версия точно работает
+aiohttp==3.8.5 
