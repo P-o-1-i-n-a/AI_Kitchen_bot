@@ -1,1 +1,1 @@
-web: python AI_Kitchen_bot.py
+worker: python AI_Kitchen_bot.py  # Изменил 'web' на 'worker' для воркера
