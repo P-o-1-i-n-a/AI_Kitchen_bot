@@ -1,6 +1,8 @@
 import os
 import asyncio
 import logging
+import hmac
+import hashlib
 from collections import deque
 from typing import Deque, Dict
 
@@ -8,7 +10,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command, Text
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
 from groq import Groq
@@ -19,11 +21,13 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET")  # Добавьте этот секрет в .env
 MODEL_NAME = "llama3-70b-8192"
 CHANNEL_LINK = "https://t.me/ai_kitchen_channel"
 SUPPORT_EMAIL = "ai_kitchen_help@outlook.com"
-WEBHOOK_PORT = 5000  # Порт для веб-сервера
-WEBHOOK_URL = "https://ваш-домен.ру/webhook"  # Замените на ваш домен
+WEBHOOK_PORT = 5000
+WEBHOOK_URL = "https://ваш-домен.ру/webhook"  # Ваш основной вебхук для Telegram
+GITHUB_WEBHOOK_PATH = "/github-webhook"  # Путь для GitHub вебхуков
 
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
@@ -46,8 +50,6 @@ def get_main_menu() -> ReplyKeyboardMarkup:
         ],
         resize_keyboard=True
     )
-
-# ... (остальные функции get_recipe_search_menu, get_after_recipe_menu остаются без изменений)
 
 # Middleware для ограничения запросов
 class RateLimitMiddleware(BaseMiddleware):
@@ -78,7 +80,7 @@ async def process_queue():
                 await asyncio.sleep(REQUEST_DELAY)
         await asyncio.sleep(0.1)
 
-# Генерация рецепта (без изменений)
+# Генерация рецепта
 async def generate_recipe(prompt: str) -> str:
     try:
         system_prompt = "Ты профессиональный шеф-повар..."
@@ -94,34 +96,78 @@ async def generate_recipe(prompt: str) -> str:
         logger.error(f"Groq error: {e}")
         return "⚠ Ошибка сервера. Попробуйте позже."
 
-# Обработчики команд (без изменений)
+# Обработчики команд
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    user_states[message.from_user.id] = {}
     await message.answer("🍳 Добро пожаловать в AI Kitchen Bot!", reply_markup=get_main_menu())
 
-# ... (остальные обработчики @dp.message остаются без изменений)
+# ... (другие обработчики сообщений остаются без изменений)
 
-# Вебхук для FastAPI
+# Вебхук для Telegram
 @app.post("/webhook")
-async def handle_webhook(request: Request):
+async def handle_telegram_webhook(request: Request):
     try:
         data = await request.json()
         update = types.Update(**data)
         await dp.feed_update(bot, update)
         return JSONResponse({"status": "ok"})
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
+        logger.error(f"Telegram webhook error: {e}")
         return JSONResponse({"status": "error"}, status_code=500)
+
+# Вебхук для GitHub
+@app.post(GITHUB_WEBHOOK_PATH)
+async def handle_github_webhook(request: Request):
+    try:
+        # Проверка подписи
+        body = await request.body()
+        signature = request.headers.get("x-hub-signature-256")
+        
+        if not GITHUB_WEBHOOK_SECRET:
+            logger.warning("GitHub webhook secret not configured")
+            raise HTTPException(status_code=403, detail="Webhook secret not configured")
+        
+        if not signature:
+            logger.warning("Missing GitHub signature")
+            raise HTTPException(status_code=403, detail="Missing signature")
+        
+        computed_signature = 'sha256=' + hmac.new(
+            GITHUB_WEBHOOK_SECRET.encode(),
+            body,
+            hashlib.sha256
+        ).hexdigest()
+        
+        if not hmac.compare_digest(signature, computed_signature):
+            logger.warning("Invalid GitHub signature")
+            raise HTTPException(status_code=403, detail="Invalid signature")
+        
+        # Обработка событий GitHub
+        event = request.headers.get("x-github-event")
+        payload = await request.json()
+        
+        logger.info(f"GitHub webhook received: {event}")
+        logger.debug(f"Payload: {payload}")
+        
+        # Здесь можно добавить логику обработки разных событий
+        if event == "push":
+            logger.info(f"Push event received for repo: {payload['repository']['full_name']}")
+            # Например, можно автоматически обновлять бота при пуше в репозиторий
+            # await bot.send_message(ADMIN_CHAT_ID, "Получен push в репозиторий")
+        
+        return JSONResponse({"status": "success"})
+    
+    except Exception as e:
+        logger.error(f"GitHub webhook processing error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Запуск бота и веб-сервера
 async def start_bot():
     await bot.set_webhook(WEBHOOK_URL)
     asyncio.create_task(process_queue())
-    logger.info(f"Бот запущен. Вебхук: {WEBHOOK_URL}")
+    logger.info(f"Бот запущен. Telegram вебхук: {WEBHOOK_URL}")
+    logger.info(f"GitHub вебхук доступен по: {WEBHOOK_URL}{GITHUB_WEBHOOK_PATH}")
 
 if __name__ == "__main__":
-    # Запуск FastAPI на указанном порту
     config = uvicorn.Config(
         app,
         host="0.0.0.0",
