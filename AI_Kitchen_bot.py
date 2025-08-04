@@ -451,8 +451,13 @@ async def main():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    port = int(os.getenv('WEBHOOK_PORT', 5000))
-    site = web.TCPSite(runner, host='0.0.0.0', port=port)
+    port = int(os.getenv('WEBHOOK_PORT', 8000))  # Изменено с 5000 на 8000
+    site = web.TCPSite(
+        runner, 
+        host='0.0.0.0', 
+        port=port,
+        reuse_port=True  # Добавлен reuse_port
+    )
     
     logger.info(f"Сервер запущен на порту {port}")
     
@@ -466,6 +471,7 @@ async def main():
         logger.error(f"Ошибка сервера: {e}")
     finally:
         await runner.cleanup()
+        await bot.session.close()  # Добавлено закрытие сессии
         logger.info("Сервер остановлен")
 
 if __name__ == "__main__":
