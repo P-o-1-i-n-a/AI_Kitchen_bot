@@ -404,6 +404,19 @@ async def handle_other(message: types.Message):
     )
 
 # ======================
+# ОБРАБОТЧИК ВЕБХУКА
+# ======================
+async def handle_webhook(request):
+    try:
+        update_data = await request.json()
+        update = types.Update(**update_data)
+        await dp.feed_update(bot=bot, update=update)
+        return web.Response(text="OK", status=200)
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return web.Response(text="Error", status=500)
+
+# ======================
 # ЗАПУСК СЕРВЕРА
 # ======================
 async def on_startup(bot: Bot):
@@ -425,24 +438,16 @@ async def on_startup(bot: Bot):
         logger.warning("WEBHOOK_URL не указан, используем polling")
 
 async def main():
-    # Явная регистрация обработчика вебхука
-async def handle_webhook(request):
-    try:
-        update = types.Update(**await request.json())
-        await dp.feed_update(bot=bot, update=update)
-        return web.Response(status=200)
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return web.Response(status=500)
-
-# Регистрируем обработчик
-app.router.add_post('/webhook', handle_webhook)
+    # Регистрируем обработчик вебхука
+    app.router.add_post('/webhook', handle_webhook)
     
+    # Настраиваем приложение aiogram
     setup_application(app, dp, bot=bot)
     
+    # Выполняем startup действия
     await on_startup(bot)
     
-    # Настраиваем сервер
+    # Настраиваем и запускаем сервер
     runner = web.AppRunner(app)
     await runner.setup()
     
@@ -455,6 +460,8 @@ app.router.add_post('/webhook', handle_webhook)
         await site.start()
         while True:
             await asyncio.sleep(3600)
+    except KeyboardInterrupt:
+        logger.info("Получен сигнал остановки")
     except Exception as e:
         logger.error(f"Ошибка сервера: {e}")
     finally:
@@ -464,6 +471,7 @@ app.router.add_post('/webhook', handle_webhook)
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен")
     except Exception as e:
-        logger.error(f"Фатальная ошибка: {e}", exc_info=True)
-
+        logger.error(f"Фатальная ошибка: {e}")
