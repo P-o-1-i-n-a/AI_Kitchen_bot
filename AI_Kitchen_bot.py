@@ -3,6 +3,10 @@ import os
 import re
 import logging
 import asyncio
+import socket
+import httpx
+import time
+from contextlib import closing
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import (
@@ -15,6 +19,20 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 from groq import Groq
 from dotenv import load_dotenv
+
+def kill_port(port):
+    try:
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(('', port))
+    except OSError as e:
+        if "Address already in use" in str(e):
+            # Безопасное завершение процессов
+            for line in os.popen(f"lsof -i :{port} -t").read().split():
+                try:
+                    os.kill(int(line), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
 # ======================
 # НАСТРОЙКА ЛОГГИРОВАНИЯ
@@ -104,7 +122,17 @@ def diet_keyboard():
 def ensure_russian(text):
     """Удаляет английские фразы из текста"""
     return re.sub(r'[a-zA-Z]', '', text).strip()
-
+    
+def cleanup_states(max_age_seconds=3600):
+    """Очищает старые сессии пользователей"""
+    current_time = time.time()
+    global user_states
+    old_sessions = [
+        chat_id for chat_id, state in user_states.items()
+        if current_time - state.get('timestamp', 0) > max_age_seconds
+    ]
+    for chat_id in old_sessions:
+        del user_states[chat_id]
 # ======================
 # ОБРАБОТЧИКИ КОМАНД
 # ======================
@@ -143,7 +171,10 @@ async def show_channel(message: types.Message):
 
 @dp.message(F.text == "🍳 Создать рецепт")
 async def ask_meal_time(message: types.Message):
-    user_states[message.chat.id] = {"step": "waiting_meal_time"}
+    user_states[message.chat.id] = {
+        "step": "waiting_meal_time",
+        "timestamp": time.time()  # Добавляем метку времени
+    }
     await message.answer(
         "🕒 Для какого приёма пищи нужен рецепт?\n\n"
         "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
@@ -369,48 +400,53 @@ async def on_startup(bot: Bot):
         await bot.delete_webhook()
 
 async def main():
-    # Регистрируем обработчики перед запуском
+    # Очищаем порт перед запуском
+    kill_port(5000)
+    
+    # Остальной код без изменений...
     webhook_requests_handler = SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
     )
     webhook_requests_handler.register(app, path="/webhook")
     
-    # Настраиваем приложение aiogram
     setup_application(app, dp, bot=bot)
-    
-    # Выполняем startup действия
     await on_startup(bot)
     
-    # Настраиваем и запускаем сервер
     runner = web.AppRunner(app)
     await runner.setup()
     
-    # Используем порт 5000 по умолчанию
-    port = int(os.getenv('WEBHOOK_PORT', 5000))
-    site = web.TCPSite(runner, host='0.0.0.0', port=port)
-    
-    logger.info(f"Сервер запущен на порту {port}")
-    logger.info(f"Вебхук доступен по пути: /webhook")
+    # Используем SO_REUSEADDR
+    site = web.TCPSite(
+        runner, 
+        host='0.0.0.0', 
+        port=5000,
+        reuse_address=True  # Ключевой параметр!
+    )
     
     try:
         await site.start()
-        # Улучшенное бесконечное ожидание
+        logger.info(f"Сервер запущен на порту 5000")
+        
+        # Добавьте периодическую очистку
         while True:
-            await asyncio.sleep(3600)  # Проверка каждые 60 минут
-    except KeyboardInterrupt:
-        logger.info("Получен сигнал остановки")
+            await asyncio.sleep(3600)  # Каждый час
+            cleanup_states()
+            logger.debug(f"Очистка состояний. Текущее количество: {len(user_states)}")
+            
     except Exception as e:
-        logger.error(f"Ошибка сервера: {e}")
+        logger.error(f"Ошибка: {e}")
     finally:
         await runner.cleanup()
-        logger.info("Сервер остановлен")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Бот остановлен")
+        raise SystemExit(0)  # Явный выход
     except Exception as e:
-        logger.error(f"Фатальная ошибка: {e}")
+        logger.critical(f"Фатальная ошибка: {e}")
+        raise SystemExit(1)
+
 
