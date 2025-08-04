@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 import os
-import asyncio
+import re
 import logging
+import asyncio
+import httpx
+import uvloop
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from fastapi import FastAPI, Request, HTTPException
-import uvicorn
+from aiogram.types import (
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 from groq import Groq
 from dotenv import load_dotenv
+
+# Устанавливаем uvloop как event loop для asyncio
+uvloop.install()
 
 # ======================
 # НАСТРОЙКА ЛОГГИРОВАНИЯ
@@ -32,74 +43,120 @@ for key in REQUIRED_KEYS:
         raise SystemExit(1)
 
 # ======================
-# ИНИЦИАЛИЗАЦИЯ БОТА
+# ИНИЦИАЛИЗАЦИЯ КОМПОНЕНТОВ
 # ======================
 bot = Bot(token=os.getenv('TELEGRAM_BOT_TOKEN'))
 dp = Dispatcher()
-app = FastAPI()
-groq_client = Groq(api_key=os.getenv('GROQ_API_KEY')) if os.getenv('GROQ_API_KEY') else None
+app = web.Application()
+
+# Исправленная инициализация Groq клиента
+groq_client = Groq(
+    api_key=os.getenv('GROQ_API_KEY'),
+    http_client=httpx.AsyncClient(proxies=None)
+) if os.getenv('GROQ_API_KEY') else None
+
+MODEL_NAME = "llama3-70b-8192"
+CHANNEL_LINK = "https://t.me/ai_kitchen_channel"
 
 # ======================
-# КЛАВИАТУРЫ
+# СОСТОЯНИЯ ПОЛЬЗОВАТЕЛЕЙ
 # ======================
-def get_main_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🍳 Поиск рецепта")],
-            [KeyboardButton(text="📜 Политика конфиденциальности")],
-            [KeyboardButton(text="🆘 Помощь")]
-        ],
-        resize_keyboard=True
-    )
+user_states = {}
 
-# ======================
-# ОБРАБОТЧИКИ КОМАНД
-# ======================
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer(
-        "🍳 Добро пожаловать в AI Kitchen Bot!",
-        reply_markup=get_main_menu()
-    )
+# [Остальной код остается без изменений до функции generate_recipe]
 
-# Пример обработки текста (заменили Text() на F.text)
-@dp.message(F.text == "🍳 Поиск рецепта")
-async def handle_recipe_request(message: types.Message):
-    await message.answer("Введите ингредиенты для поиска рецепта:")
-
-# ======================
-# ВЕБХУКИ
-# ======================
-@app.post("/webhook")
-async def telegram_webhook(request: Request):
+async def generate_recipe(chat_id: int):
     try:
-        update = await request.json()
-        await dp.feed_update(bot, update)
-        return {"status": "ok"}
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        data = user_states[chat_id]
+        await bot.send_chat_action(chat_id, 'typing')
 
-# ======================
-# ЗАПУСК СЕРВИСА
-# ======================
-@app.on_event("startup")
-async def startup():
-    webhook_url = os.getenv('WEBHOOK_URL')
-    if webhook_url:
-        await bot.set_webhook(
-            url=f"{webhook_url}/webhook",
-            drop_pending_updates=True
+        # Формируем промпт с учетом диеты
+        diet_prompt = ""
+        if data.get('diet_type') == "⚠️ Аллергии":
+            diet_prompt = f" Исключи: {data.get('allergies', '')}."
+        elif data['diet_type'] == "⚖️ Низкокалорийные":
+            diet_prompt = " Сделай рецепт низкокалорийным (менее 300 ккал на порцию)."
+        elif data['diet_type'] == "💪 Высокобелковые":
+            diet_prompt = " Сделай рецепт с высоким содержанием белка (не менее 20г на порцию)."
+        elif data['diet_type'] == "☪️ Халяль":
+            diet_prompt = " Учитывай правила халяль (без свинины, алкоголя и т.д.)."
+        elif data['diet_type'] == "☦️ Постная":
+            diet_prompt = " Учитывай православные постные правила (без мяса, молока, яиц)."
+
+        if data['ingredients'].lower() == 'что есть в холодильнике?':
+            prompt = f"""Придумай рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни.{diet_prompt}
+            Используй распространённые ингредиенты, которые обычно есть дома у россиян. Говори только на русском языке!"""
+        else:
+            prompt = f"""Составь рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни, используя: {data['ingredients']}.{diet_prompt}
+            Говори только на русском языке!"""
+
+        prompt += """
+        Формат (всегда на русском):
+        🍽 Название (только на русском)
+        🌍 Кухня: [тип кухни]
+        🥗 Диета: [тип диеты]
+        ⏱ Время приготовления: [время]
+        📋 Ингредиенты (точные количества в граммах/мл):
+        - Ингредиент 1: количество
+        - Ингредиент 2: количество
+        🔪 Пошаговое приготовление:
+        1. Шаг 1
+        2. Шаг 2
+        📊 КБЖУ на порцию (указать вес порции в граммах):
+        - Калории: [ккал]
+        - Белки: [г]
+        - Жиры: [г]
+        - Углеводы: [г]
+        💡 Полезные советы:"""
+
+        response = await groq_client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Ты профессиональный шеф-повар. Говори только на русском языке! "
+                               "Всегда указывай вес порции в граммах при расчёте КБЖУ."
+                },
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
         )
-        logger.info(f"Вебхук установлен: {webhook_url}")
-    else:
-        logger.warning("WEBHOOK_URL не указан, используем polling")
-        asyncio.create_task(dp.start_polling(bot))
+
+        recipe = ensure_russian(response.choices[0].message.content)
+        
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🍳 Наш кулинарный канал", url=CHANNEL_LINK)]
+        ])
+        
+        await bot.send_message(
+            chat_id,
+            recipe,
+            parse_mode='Markdown',
+            reply_markup=markup
+        )
+        
+        await bot.send_message(
+            chat_id,
+            "Что будем делать дальше?",
+            reply_markup=main_keyboard()
+        )
+
+    except Exception as e:
+        await bot.send_message(
+            chat_id,
+            f"⚠️ Ошибка генерации рецепта: {str(e)}\n\n"
+            "Попробуйте еще раз или нажмите /start",
+            reply_markup=main_keyboard()
+        )
+    finally:
+        user_states[chat_id]["step"] = "done"
+
+# [Остальной код без изменений]
 
 if __name__ == "__main__":
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=int(os.getenv('WEBHOOK_PORT', 5000)),
-        log_level="info"
-    )
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен")
+    except Exception as e:
+        logger.error(f"Фатальная ошибка: {e}")
