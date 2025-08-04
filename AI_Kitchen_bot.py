@@ -5,7 +5,7 @@ import logging
 import asyncio
 import httpx
 import uvloop
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, types, F, Router
 from aiogram.filters import Command
 from aiogram.types import (
     ReplyKeyboardMarkup,
@@ -42,12 +42,28 @@ for key in REQUIRED_KEYS:
         logger.error(f"Отсутствует обязательная переменная: {key}")
         raise SystemExit(1)
 
+# Загрузка режимов работы
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+MAINTENANCE = os.getenv('MAINTENANCE', 'False').lower() == 'true'
+logger.info(f"Режимы работы: DEBUG={DEBUG}, MAINTENANCE={MAINTENANCE}")
+
 # ======================
 # ИНИЦИАЛИЗАЦИЯ КОМПОНЕНТОВ
 # ======================
 bot = Bot(token=os.getenv('TELEGRAM_BOT_TOKEN'))
 dp = Dispatcher()
 app = web.Application()
+
+# Режим обслуживания
+if MAINTENANCE:
+    maintenance_router = Router()
+    
+    @maintenance_router.message()
+    async def maintenance_mode(message: types.Message):
+        await message.answer("🔧 Бот на техническом обслуживании. Попробуйте позже.")
+    
+    dp.include_router(maintenance_router)
+    logger.warning("Бот запущен в режиме обслуживания!")
 
 # Конфигурация клиента Groq с увеличенными таймаутами
 groq_client = Groq(
@@ -137,6 +153,9 @@ async def safe_api_call(call, *args, **kwargs):
 # ======================
 @dp.message(Command("start", "help"))
 async def cmd_start(message: types.Message):
+    if DEBUG:
+        logger.debug(f"Start command from {message.from_user.id}")
+    
     await message.answer(
         "👨‍🍳 Привет! Я - кулинарный бот с генерацией рецептов.\n"
         "⚠️ Рецепты создаются искусственным интеллектом (AI) и могут содержать неточности.\n\n"
@@ -166,6 +185,9 @@ async def show_channel(message: types.Message):
 
 @dp.message(F.text == "🍳 Создать рецепт")
 async def ask_meal_time(message: types.Message):
+    if MAINTENANCE:
+        return
+    
     user_states[message.chat.id] = {"step": "waiting_meal_time"}
     await message.answer(
         "🕒 Для какого приёма пищи нужен рецепт?",
@@ -176,6 +198,9 @@ async def ask_meal_time(message: types.Message):
     lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_meal_time"
 )
 async def ask_cuisine(message: types.Message):
+    if MAINTENANCE:
+        return
+        
     if message.text not in ["🌅 Завтрак", "🌇 Обед", "🌃 Ужин", "☕ Перекус"]:
         await message.answer("Пожалуйста, выберите вариант из кнопок ↓", 
                            reply_markup=meal_time_keyboard())
@@ -191,6 +216,9 @@ async def ask_cuisine(message: types.Message):
     lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_cuisine"
 )
 async def ask_diet(message: types.Message):
+    if MAINTENANCE:
+        return
+        
     valid_cuisines = ["🇷🇺 Русская", "🇮🇹 Итальянская", "🇯🇵 Японская", "🇬🇪 Кавказская",
                      "🇺🇸 Американская", "🇫🇷 Французская", "🇹🇷 Турецкая", "🇨🇳 Китайская",
                      "🇲🇽 Мексиканская", "🇮🇳 Индийская"]
@@ -208,6 +236,9 @@ async def ask_diet(message: types.Message):
     lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_diet"
 )
 async def process_diet_choice(message: types.Message):
+    if MAINTENANCE:
+        return
+        
     valid_diets = ["🚫 Нет ограничений", "⚠️ Аллергии", "⚖️ Низкокалорийные",
                   "💪 Высокобелковые", "☪️ Халяль", "☦️ Постная"]
 
@@ -230,6 +261,9 @@ async def process_diet_choice(message: types.Message):
         await ask_for_ingredients(message.chat.id)
 
 async def ask_for_ingredients(chat_id: int):
+    if MAINTENANCE:
+        return
+        
     await bot.send_message(
         chat_id,
         "📝 Введите ингредиенты через запятую:\n"
@@ -241,6 +275,9 @@ async def ask_for_ingredients(chat_id: int):
     lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_allergies"
 )
 async def process_allergies(message: types.Message):
+    if MAINTENANCE:
+        return
+        
     user_states[message.chat.id]["allergies"] = message.text
     user_states[message.chat.id]["step"] = "waiting_ingredients"
     await ask_for_ingredients(message.chat.id)
@@ -249,6 +286,9 @@ async def process_allergies(message: types.Message):
     lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_ingredients"
 )
 async def process_ingredients(message: types.Message):
+    if MAINTENANCE:
+        return
+        
     user_states[message.chat.id]["ingredients"] = message.text
     await message.answer(
         "🔄 Генерирую рецепт... Пожалуйста, подождите.\n"
@@ -259,8 +299,15 @@ async def process_ingredients(message: types.Message):
 
 async def generate_recipe(chat_id: int):
     try:
+        if MAINTENANCE:
+            await bot.send_message(chat_id, "🔧 Бот на техническом обслуживании. Попробуйте позже.")
+            return
+
         data = user_states[chat_id]
         await bot.send_chat_action(chat_id, 'typing')
+
+        if DEBUG:
+            logger.debug(f"Generating recipe for {chat_id} with data: {data}")
 
         # Формируем промпт
         diet_prompt = ""
@@ -309,6 +356,9 @@ async def generate_recipe(chat_id: int):
 
         recipe = ensure_russian(response.choices[0].message.content)
         
+        if DEBUG:
+            logger.debug(f"Generated recipe: {recipe[:200]}...")
+        
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🍳 Наш кулинарный канал", url=CHANNEL_LINK)]
         ])
@@ -345,6 +395,9 @@ async def generate_recipe(chat_id: int):
 
 @dp.message()
 async def handle_other(message: types.Message):
+    if MAINTENANCE:
+        return
+        
     await message.answer(
         "Используйте кнопку «🍳 Создать рецепт» или /start",
         reply_markup=main_keyboard()
@@ -354,6 +407,13 @@ async def handle_other(message: types.Message):
 # ЗАПУСК СЕРВЕРА
 # ======================
 async def on_startup(bot: Bot):
+    if DEBUG:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        logger.info("Режим DEBUG активирован")
+
     webhook_url = os.getenv('WEBHOOK_URL')
     if webhook_url:
         await bot.set_webhook(
