@@ -51,7 +51,9 @@ app = web.Application()
 
 # Исправленная инициализация Groq клиента
 groq_client = Groq(
-    api_key=os.getenv('GROQ_API_KEY').strip('"')
+    api_key=os.getenv('GROQ_API_KEY').strip('"'),
+    # Увеличиваем таймауты
+    timeout=httpx.Timeout(30.0, connect=60.0)  # 30 сек на запрос, 60 сек на подключение
 ) if os.getenv('GROQ_API_KEY') else None
 
 MODEL_NAME = "llama3-70b-8192"
@@ -336,15 +338,28 @@ async def generate_recipe(chat_id: int):
             chat_id,
             "Что будем делать дальше?",
             reply_markup=main_keyboard()
+        response = await groq_client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[...],
+            temperature=0.7,
+            timeout=30  # Таймаут для конкретного запроса
         )
 
-    except Exception as e:
+    except httpx.ReadTimeout:
         await bot.send_message(
             chat_id,
-            f"⚠️ Ошибка генерации рецепта: {str(e)}\n\n"
-            "Попробуйте еще раз или нажмите /start",
+            "⏳ Превышено время ожидания ответа от сервиса генерации. Попробуйте позже.",
             reply_markup=main_keyboard()
         )
+        return
+    except Exception as e:
+        logger.error(f"Ошибка генерации: {str(e)}")
+        await bot.send_message(
+            chat_id,
+            "⚠️ Произошла ошибка при генерации рецепта. Попробуйте ещё раз.",
+            reply_markup=main_keyboard()
+        )
+        return
     finally:
         user_states[chat_id]["step"] = "done"
 
@@ -413,3 +428,4 @@ if __name__ == "__main__":
         logger.info("Бот остановлен")
     except Exception as e:
         logger.error(f"Фатальная ошибка: {e}")
+
