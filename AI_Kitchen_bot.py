@@ -40,7 +40,10 @@ for key in REQUIRED_KEYS:
 # ======================
 # ИНИЦИАЛИЗАЦИЯ КОМПОНЕНТОВ
 # ======================
-bot = Bot(token=os.getenv('TELEGRAM_BOT_TOKEN'))
+bot = Bot(
+    token=os.getenv('TELEGRAM_BOT_TOKEN'),
+    session=httpx.AsyncClient(timeout=30.0)  # Увеличиваем таймаут
+)
 dp = Dispatcher()
 app = web.Application()
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY')) if os.getenv('GROQ_API_KEY') else None
@@ -352,15 +355,18 @@ async def handle_other(message: types.Message):
 # ЗАПУСК СЕРВЕРА (ОБНОВЛЕННАЯ ВЕРСИЯ)
 # ======================
 async def on_startup(bot: Bot):
-    webhook_url = os.getenv('WEBHOOK_URL')
-    if webhook_url:
-        await bot.set_webhook(
-            url=f"{webhook_url}/webhook",
-            drop_pending_updates=True
-        )
-        logger.info(f"Вебхук установлен: {webhook_url}")
-    else:
-        logger.warning("WEBHOOK_URL не указан, используем polling")
+    try:
+        webhook_url = os.getenv('WEBHOOK_URL')
+        if webhook_url:
+            await bot.delete_webhook()
+            await bot.set_webhook(
+                url=f"{webhook_url}/webhook",
+                timeout=30  # Увеличиваем таймаут
+            )
+    except Exception as e:
+        logger.error(f"Ошибка вебхука: {e}")
+        # Переключаемся на long polling
+        await bot.delete_webhook()
 
 async def main():
     # Регистрируем обработчики перед запуском
@@ -407,3 +413,4 @@ if __name__ == "__main__":
         logger.info("Бот остановлен")
     except Exception as e:
         logger.error(f"Фатальная ошибка: {e}")
+
