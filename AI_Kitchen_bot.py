@@ -425,12 +425,18 @@ async def on_startup(bot: Bot):
         logger.warning("WEBHOOK_URL не указан, используем polling")
 
 async def main():
-    # Регистрируем обработчики
-    webhook_requests_handler = SimpleRequestHandler(
-        dispatcher=dp,
-        bot=bot,
-    )
-    webhook_requests_handler.register(app, path="/webhook")
+    # Явная регистрация обработчика вебхука
+async def handle_webhook(request):
+    try:
+        update = types.Update(**await request.json())
+        await dp.feed_update(bot=bot, update=update)
+        return web.Response(status=200)
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return web.Response(status=500)
+
+# Регистрируем обработчик
+app.router.add_post('/webhook', handle_webhook)
     
     setup_application(app, dp, bot=bot)
     
@@ -460,3 +466,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except Exception as e:
         logger.error(f"Фатальная ошибка: {e}", exc_info=True)
+
