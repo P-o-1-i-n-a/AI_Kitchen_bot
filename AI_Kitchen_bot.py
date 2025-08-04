@@ -2,6 +2,7 @@
 import os
 import re
 import logging
+import asyncio
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import (
@@ -348,7 +349,7 @@ async def handle_other(message: types.Message):
     )
 
 # ======================
-# ЗАПУСК СЕРВЕРА
+# ЗАПУСК СЕРВЕРА (ОБНОВЛЕННАЯ ВЕРСИЯ)
 # ======================
 async def on_startup(bot: Bot):
     webhook_url = os.getenv('WEBHOOK_URL')
@@ -362,24 +363,47 @@ async def on_startup(bot: Bot):
         logger.warning("WEBHOOK_URL не указан, используем polling")
 
 async def main():
-    await on_startup(bot)
-    
-    # Настройка веб-сервера
+    # Регистрируем обработчики перед запуском
     webhook_requests_handler = SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
     )
     webhook_requests_handler.register(app, path="/webhook")
+    
+    # Настраиваем приложение aiogram
     setup_application(app, dp, bot=bot)
     
-    # Запуск
+    # Выполняем startup действия
+    await on_startup(bot)
+    
+    # Настраиваем и запускаем сервер
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv('WEBHOOK_PORT', 5000)))
-    await site.start()
     
-    logger.info("Бот запущен")
-    await asyncio.Event().wait()  # Бесконечное ожидание
+    # Используем порт 5000 по умолчанию
+    port = int(os.getenv('WEBHOOK_PORT', 5000))
+    site = web.TCPSite(runner, host='0.0.0.0', port=port)
+    
+    logger.info(f"Сервер запущен на порту {port}")
+    logger.info(f"Вебхук доступен по пути: /webhook")
+    
+    try:
+        await site.start()
+        # Улучшенное бесконечное ожидание
+        while True:
+            await asyncio.sleep(3600)  # Проверка каждые 60 минут
+    except KeyboardInterrupt:
+        logger.info("Получен сигнал остановки")
+    except Exception as e:
+        logger.error(f"Ошибка сервера: {e}")
+    finally:
+        await runner.cleanup()
+        logger.info("Сервер остановлен")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен")
+    except Exception as e:
+        logger.error(f"Фатальная ошибка: {e}")
