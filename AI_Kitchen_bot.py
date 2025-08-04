@@ -400,44 +400,34 @@ async def on_startup(bot: Bot):
         await bot.delete_webhook()
 
 async def main():
-    # Очищаем порт перед запуском
-    kill_port(5000)
+    # Жесткая очистка порта
+    os.system("fuser -k 5000/tcp >/dev/null 2>&1 || true")
     
-    # Остальной код без изменений...
-    webhook_requests_handler = SimpleRequestHandler(
-        dispatcher=dp,
-        bot=bot,
-    )
-    webhook_requests_handler.register(app, path="/webhook")
-    
-    setup_application(app, dp, bot=bot)
-    await on_startup(bot)
-    
+    # Даем время на освобождение порта
+    await asyncio.sleep(2)
+
+    # Инициализация сервера с reuse_port
     runner = web.AppRunner(app)
     await runner.setup()
-    
-    # Используем SO_REUSEADDR
     site = web.TCPSite(
-        runner, 
-        host='0.0.0.0', 
+        runner,
+        host='0.0.0.0',
         port=5000,
-        reuse_address=True  # Ключевой параметр!
+        reuse_port=True  # Ключевое изменение!
     )
     
     try:
         await site.start()
-        logger.info(f"Сервер запущен на порту 5000")
+        logger.info(f"Сервер успешно запущен на порту 5000")
         
-        # Добавьте периодическую очистку
+        # Вечный цикл с обработкой ошибок
         while True:
-            await asyncio.sleep(3600)  # Каждый час
-            cleanup_states()
-            logger.debug(f"Очистка состояний. Текущее количество: {len(user_states)}")
-            
+            await asyncio.sleep(3600)
     except Exception as e:
-        logger.error(f"Ошибка: {e}")
+        logger.error(f"Критическая ошибка: {e}")
     finally:
         await runner.cleanup()
+        await bot.session.close()
 
 if __name__ == "__main__":
     try:
@@ -448,5 +438,6 @@ if __name__ == "__main__":
     except Exception as e:
         logger.critical(f"Фатальная ошибка: {e}")
         raise SystemExit(1)
+
 
 
