@@ -51,8 +51,7 @@ app = web.Application()
 
 # Исправленная инициализация Groq клиента
 groq_client = Groq(
-    api_key=os.getenv('GROQ_API_KEY').strip('"'),
-    http_client=httpx.AsyncClient(proxies=None)
+    api_key=os.getenv('GROQ_API_KEY').strip('"')
 ) if os.getenv('GROQ_API_KEY') else None
 
 MODEL_NAME = "llama3-70b-8192"
