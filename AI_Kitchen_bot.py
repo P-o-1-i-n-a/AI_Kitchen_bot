@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 load_dotenv('/etc/secrets/bot_env')
 
 # Проверка обязательных переменных
-REQUIRED_KEYS = ['TELEGRAM_BOT_TOKEN', 'GROQ_API_KEY']
+REQUIRED_KEYS = ['TELEGRAM_BOT_TOKEN', 'GROQ_API_KEY', 'WEBHOOK_URL']
 for key in REQUIRED_KEYS:
     if not os.getenv(key):
         logger.error(f"Отсутствует обязательная переменная: {key}")
@@ -49,15 +49,20 @@ bot = Bot(token=os.getenv('TELEGRAM_BOT_TOKEN'))
 dp = Dispatcher()
 app = web.Application()
 
-# Исправленная инициализация Groq клиента
+# Конфигурация клиента Groq с увеличенными таймаутами
 groq_client = Groq(
     api_key=os.getenv('GROQ_API_KEY').strip('"'),
-    # Увеличиваем таймауты
-    timeout=httpx.Timeout(30.0, connect=60.0)  # 30 сек на запрос, 60 сек на подключение
-) if os.getenv('GROQ_API_KEY') else None
+    timeout=httpx.Timeout(30.0, connect=60.0)
+)
 
 MODEL_NAME = "llama3-70b-8192"
 CHANNEL_LINK = "https://t.me/ai_kitchen_channel"
+
+# ======================
+# КОНСТАНТЫ И НАСТРОЙКИ
+# ======================
+MAX_RETRIES = 3  # Максимальное количество попыток запроса к API
+REQUEST_DELAY = 1  # Задержка между попытками в секундах
 
 # ======================
 # СОСТОЯНИЯ ПОЛЬЗОВАТЕЛЕЙ
@@ -114,6 +119,19 @@ def ensure_russian(text):
     """Удаляет английские фразы из текста"""
     return re.sub(r'[a-zA-Z]', '', text).strip()
 
+async def safe_api_call(call, *args, **kwargs):
+    """Безопасный вызов API с повторными попытками"""
+    for attempt in range(MAX_RETRIES):
+        try:
+            return await call(*args, **kwargs)
+        except (httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            await asyncio.sleep(REQUEST_DELAY * (attempt + 1))
+        except Exception as e:
+            logger.error(f"API call error: {str(e)}")
+            raise
+
 # ======================
 # ОБРАБОТЧИКИ КОМАНД
 # ======================
@@ -122,8 +140,7 @@ async def cmd_start(message: types.Message):
     await message.answer(
         "👨‍🍳 Привет! Я - кулинарный бот с генерацией рецептов.\n"
         "⚠️ Рецепты создаются искусственным интеллектом (AI) и могут содержать неточности.\n\n"
-        "Нажмите кнопку ниже, чтобы создать рецепт ↓\n\n"
-        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        "Нажмите кнопку ниже, чтобы создать рецепт ↓",
         reply_markup=main_keyboard()
     )
 
@@ -133,8 +150,7 @@ async def show_offer(message: types.Message):
         "📄 Публичная оферта:\n\n"
         "1. Все рецепты генерируются искусственным интеллектом и не являются профессиональной рекомендацией.\n"
         "2. Вы несете ответственность за проверку ингредиентов на аллергены и свежесть.\n"
-        "3. Запрещено использовать бот для создания вредоносного контента.\n\n"
-        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        "3. Запрещено использовать бот для создания вредоносного контента.",
         disable_web_page_preview=True
     )
 
@@ -143,10 +159,8 @@ async def show_channel(message: types.Message):
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🍳 AI Kitchen Channel", url=CHANNEL_LINK)]
     ])
-    
     await message.answer(
-        "🔔 Подпишитесь на наш кулинарный канал с рецептами и кулинарными лайфхаками!\n"
-        "Там вы найдете много интересных рецептов и кулинарных идей!",
+        "🔔 Подпишитесь на наш кулинарный канал с рецептами и кулинарными лайфхаками!",
         reply_markup=markup
     )
 
@@ -154,8 +168,7 @@ async def show_channel(message: types.Message):
 async def ask_meal_time(message: types.Message):
     user_states[message.chat.id] = {"step": "waiting_meal_time"}
     await message.answer(
-        "🕒 Для какого приёма пищи нужен рецепт?\n\n"
-        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        "🕒 Для какого приёма пищи нужен рецепт?",
         reply_markup=meal_time_keyboard()
     )
 
@@ -164,60 +177,43 @@ async def ask_meal_time(message: types.Message):
 )
 async def ask_cuisine(message: types.Message):
     if message.text not in ["🌅 Завтрак", "🌇 Обед", "🌃 Ужин", "☕ Перекус"]:
-        await message.answer(
-            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
-            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
-            reply_markup=meal_time_keyboard()
-        )
+        await message.answer("Пожалуйста, выберите вариант из кнопок ↓", 
+                           reply_markup=meal_time_keyboard())
         return
 
     user_states[message.chat.id] = {
         "step": "waiting_cuisine",
         "meal_time": message.text
     }
-    await message.answer(
-        "🌍 Выберите кухню:\n\n"
-        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
-        reply_markup=cuisine_keyboard()
-    )
+    await message.answer("🌍 Выберите кухню:", reply_markup=cuisine_keyboard())
 
 @dp.message(
     lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_cuisine"
 )
 async def ask_diet(message: types.Message):
     valid_cuisines = ["🇷🇺 Русская", "🇮🇹 Итальянская", "🇯🇵 Японская", "🇬🇪 Кавказская",
-                      "🇺🇸 Американская", "🇫🇷 Французская", "🇹🇷 Турецкая", "🇨🇳 Китайская",
-                      "🇲🇽 Мексиканская", "🇮🇳 Индийская"]
+                     "🇺🇸 Американская", "🇫🇷 Французская", "🇹🇷 Турецкая", "🇨🇳 Китайская",
+                     "🇲🇽 Мексиканская", "🇮🇳 Индийская"]
 
     if message.text not in valid_cuisines:
-        await message.answer(
-            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
-            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
-            reply_markup=cuisine_keyboard()
-        )
+        await message.answer("Пожалуйста, выберите вариант из кнопок ↓", 
+                           reply_markup=cuisine_keyboard())
         return
 
     user_states[message.chat.id]["cuisine"] = message.text
     user_states[message.chat.id]["step"] = "waiting_diet"
-    await message.answer(
-        "🥗 Есть ли диетические ограничения?\n\n"
-        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
-        reply_markup=diet_keyboard()
-    )
+    await message.answer("🥗 Есть ли диетические ограничения?", reply_markup=diet_keyboard())
 
 @dp.message(
     lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_diet"
 )
 async def process_diet_choice(message: types.Message):
     valid_diets = ["🚫 Нет ограничений", "⚠️ Аллергии", "⚖️ Низкокалорийные",
-                   "💪 Высокобелковые", "☪️ Халяль", "☦️ Постная"]
+                  "💪 Высокобелковые", "☪️ Халяль", "☦️ Постная"]
 
     if message.text not in valid_diets:
-        await message.answer(
-            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
-            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
-            reply_markup=diet_keyboard()
-        )
+        await message.answer("Пожалуйста, выберите вариант из кнопок ↓", 
+                           reply_markup=diet_keyboard())
         return
 
     user_states[message.chat.id]["diet_type"] = message.text
@@ -226,8 +222,7 @@ async def process_diet_choice(message: types.Message):
         user_states[message.chat.id]["step"] = "waiting_allergies"
         await message.answer(
             "📝 Укажите продукты, которые нужно исключить (через запятую):\n"
-            "Пример: орехи, молоко, морепродукты\n\n"
-            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+            "Пример: орехи, молоко, морепродукты",
             reply_markup=types.ReplyKeyboardRemove()
         )
     else:
@@ -238,8 +233,7 @@ async def ask_for_ingredients(chat_id: int):
     await bot.send_message(
         chat_id,
         "📝 Введите ингредиенты через запятую:\n"
-        "Пример: 2 яйца, 100г муки, 1 ст.л. масла\n\n"
-        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        "Пример: 2 яйца, 100г муки, 1 ст.л. масла",
         reply_markup=types.ReplyKeyboardRemove()
     )
 
@@ -258,8 +252,7 @@ async def process_ingredients(message: types.Message):
     user_states[message.chat.id]["ingredients"] = message.text
     await message.answer(
         "🔄 Генерирую рецепт... Пожалуйста, подождите.\n"
-        "Это может занять до 30 секунд.\n\n"
-        "ℹ️ Если бот не реагирует более минуты, нажмите /start",
+        "Это может занять до 30 секунд.",
         reply_markup=types.ReplyKeyboardRemove()
     )
     await generate_recipe(message.chat.id)
@@ -269,7 +262,7 @@ async def generate_recipe(chat_id: int):
         data = user_states[chat_id]
         await bot.send_chat_action(chat_id, 'typing')
 
-        # Формируем промпт с учетом диеты
+        # Формируем промпт
         diet_prompt = ""
         if data.get('diet_type') == "⚠️ Аллергии":
             diet_prompt = f" Исключи: {data.get('allergies', '')}."
@@ -282,14 +275,7 @@ async def generate_recipe(chat_id: int):
         elif data['diet_type'] == "☦️ Постная":
             diet_prompt = " Учитывай православные постные правила (без мяса, молока, яиц)."
 
-        if data['ingredients'].lower() == 'что есть в холодильнике?':
-            prompt = f"""Придумай рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни.{diet_prompt}
-            Используй распространённые ингредиенты, которые обычно есть дома у россиян. Говори только на русском языке!"""
-        else:
-            prompt = f"""Составь рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни, используя: {data['ingredients']}.{diet_prompt}
-            Говори только на русском языке!"""
-
-        prompt += """
+        prompt = f"""Составь рецепт для {data['meal_time']} в стиле {data['cuisine']} кухни, используя: {data['ingredients']}.{diet_prompt}
         Формат (всегда на русском):
         🍽 Название (только на русском)
         🌍 Кухня: [тип кухни]
@@ -308,13 +294,13 @@ async def generate_recipe(chat_id: int):
         - Углеводы: [г]
         💡 Полезные советы:"""
 
-        response = await groq_client.chat.completions.create(
+        response = await safe_api_call(
+            groq_client.chat.completions.create,
             model=MODEL_NAME,
             messages=[
                 {
                     "role": "system",
-                    "content": "Ты профессиональный шеф-повар. Говори только на русском языке! "
-                               "Всегда указывай вес порции в граммах при расчёте КБЖУ."
+                    "content": "Ты профессиональный шеф-повар. Говори только на русском языке!"
                 },
                 {"role": "user", "content": prompt}
             ],
@@ -338,36 +324,29 @@ async def generate_recipe(chat_id: int):
             chat_id,
             "Что будем делать дальше?",
             reply_markup=main_keyboard()
-        response = await groq_client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[...],
-            temperature=0.7,
-            timeout=30  # Таймаут для конкретного запроса
         )
 
-    except httpx.ReadTimeout:
+    except (httpx.ReadTimeout, httpx.ConnectTimeout):
         await bot.send_message(
             chat_id,
             "⏳ Превышено время ожидания ответа от сервиса генерации. Попробуйте позже.",
             reply_markup=main_keyboard()
         )
-        return
     except Exception as e:
-        logger.error(f"Ошибка генерации: {str(e)}")
+        logger.error(f"Ошибка генерации: {str(e)}", exc_info=True)
         await bot.send_message(
             chat_id,
             "⚠️ Произошла ошибка при генерации рецепта. Попробуйте ещё раз.",
             reply_markup=main_keyboard()
         )
-        return
     finally:
-        user_states[chat_id]["step"] = "done"
+        if chat_id in user_states:
+            user_states[chat_id]["step"] = "done"
 
 @dp.message()
 async def handle_other(message: types.Message):
     await message.answer(
-        "Используйте кнопку «🍳 Создать рецепт» или /start\n\n"
-        "ℹ️ Если бот не реагирует, нажмите /start",
+        "Используйте кнопку «🍳 Создать рецепт» или /start",
         reply_markup=main_keyboard()
     )
 
@@ -386,20 +365,18 @@ async def on_startup(bot: Bot):
         logger.warning("WEBHOOK_URL не указан, используем polling")
 
 async def main():
-    # Регистрируем обработчики перед запуском
+    # Регистрируем обработчики
     webhook_requests_handler = SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
     )
     webhook_requests_handler.register(app, path="/webhook")
     
-    # Настраиваем приложение aiogram
     setup_application(app, dp, bot=bot)
     
-    # Выполняем startup действия
     await on_startup(bot)
     
-    # Настраиваем и запускаем сервер
+    # Настраиваем сервер
     runner = web.AppRunner(app)
     await runner.setup()
     
@@ -407,14 +384,11 @@ async def main():
     site = web.TCPSite(runner, host='0.0.0.0', port=port)
     
     logger.info(f"Сервер запущен на порту {port}")
-    logger.info(f"Вебхук доступен по пути: /webhook")
     
     try:
         await site.start()
         while True:
             await asyncio.sleep(3600)
-    except KeyboardInterrupt:
-        logger.info("Получен сигнал остановки")
     except Exception as e:
         logger.error(f"Ошибка сервера: {e}")
     finally:
@@ -424,8 +398,5 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Бот остановлен")
     except Exception as e:
-        logger.error(f"Фатальная ошибка: {e}")
-
+        logger.error(f"Фатальная ошибка: {e}", exc_info=True)
