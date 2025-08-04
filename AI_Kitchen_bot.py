@@ -63,7 +63,205 @@ CHANNEL_LINK = "https://t.me/ai_kitchen_channel"
 # ======================
 user_states = {}
 
-# [Остальной код остается без изменений до функции generate_recipe]
+# ======================
+# КЛАВИАТУРЫ
+# ======================
+def main_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🍳 Создать рецепт")],
+            [KeyboardButton(text="📜 Публичная оферта")],
+            [KeyboardButton(text="📢 Наш кулинарный канал")]
+        ],
+        resize_keyboard=True
+    )
+
+def meal_time_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🌅 Завтрак"), KeyboardButton(text="🌇 Обед")],
+            [KeyboardButton(text="🌃 Ужин"), KeyboardButton(text="☕ Перекус")]
+        ],
+        resize_keyboard=True
+    )
+
+def cuisine_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🇷🇺 Русская"), KeyboardButton(text="🇮🇹 Итальянская"), KeyboardButton(text="🇯🇵 Японская")],
+            [KeyboardButton(text="🇬🇪 Кавказская"), KeyboardButton(text="🇺🇸 Американская"), KeyboardButton(text="🇫🇷 Французская")],
+            [KeyboardButton(text="🇹🇷 Турецкая"), KeyboardButton(text="🇨🇳 Китайская"), KeyboardButton(text="🇲🇽 Мексиканская")],
+            [KeyboardButton(text="🇮🇳 Индийская")]
+        ],
+        resize_keyboard=True
+    )
+
+def diet_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🚫 Нет ограничений"), KeyboardButton(text="⚠️ Аллергии")],
+            [KeyboardButton(text="⚖️ Низкокалорийные"), KeyboardButton(text="💪 Высокобелковые")],
+            [KeyboardButton(text="☪️ Халяль"), KeyboardButton(text="☦️ Постная")]
+        ],
+        resize_keyboard=True
+    )
+
+# ======================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ======================
+def ensure_russian(text):
+    """Удаляет английские фразы из текста"""
+    return re.sub(r'[a-zA-Z]', '', text).strip()
+
+# ======================
+# ОБРАБОТЧИКИ КОМАНД
+# ======================
+@dp.message(Command("start", "help"))
+async def cmd_start(message: types.Message):
+    await message.answer(
+        "👨‍🍳 Привет! Я - кулинарный бот с генерацией рецептов.\n"
+        "⚠️ Рецепты создаются искусственным интеллектом (AI) и могут содержать неточности.\n\n"
+        "Нажмите кнопку ниже, чтобы создать рецепт ↓\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        reply_markup=main_keyboard()
+    )
+
+@dp.message(F.text == "📜 Публичная оферта")
+async def show_offer(message: types.Message):
+    await message.answer(
+        "📄 Публичная оферта:\n\n"
+        "1. Все рецепты генерируются искусственным интеллектом и не являются профессиональной рекомендацией.\n"
+        "2. Вы несете ответственность за проверку ингредиентов на аллергены и свежесть.\n"
+        "3. Запрещено использовать бот для создания вредоносного контента.\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        disable_web_page_preview=True
+    )
+
+@dp.message(F.text == "📢 Наш кулинарный канал")
+async def show_channel(message: types.Message):
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🍳 AI Kitchen Channel", url=CHANNEL_LINK)]
+    ])
+    
+    await message.answer(
+        "🔔 Подпишитесь на наш кулинарный канал с рецептами и кулинарными лайфхаками!\n"
+        "Там вы найдете много интересных рецептов и кулинарных идей!",
+        reply_markup=markup
+    )
+
+@dp.message(F.text == "🍳 Создать рецепт")
+async def ask_meal_time(message: types.Message):
+    user_states[message.chat.id] = {"step": "waiting_meal_time"}
+    await message.answer(
+        "🕒 Для какого приёма пищи нужен рецепт?\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        reply_markup=meal_time_keyboard()
+    )
+
+@dp.message(
+    lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_meal_time"
+)
+async def ask_cuisine(message: types.Message):
+    if message.text not in ["🌅 Завтрак", "🌇 Обед", "🌃 Ужин", "☕ Перекус"]:
+        await message.answer(
+            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
+            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
+            reply_markup=meal_time_keyboard()
+        )
+        return
+
+    user_states[message.chat.id] = {
+        "step": "waiting_cuisine",
+        "meal_time": message.text
+    }
+    await message.answer(
+        "🌍 Выберите кухню:\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        reply_markup=cuisine_keyboard()
+    )
+
+@dp.message(
+    lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_cuisine"
+)
+async def ask_diet(message: types.Message):
+    valid_cuisines = ["🇷🇺 Русская", "🇮🇹 Итальянская", "🇯🇵 Японская", "🇬🇪 Кавказская",
+                      "🇺🇸 Американская", "🇫🇷 Французская", "🇹🇷 Турецкая", "🇨🇳 Китайская",
+                      "🇲🇽 Мексиканская", "🇮🇳 Индийская"]
+
+    if message.text not in valid_cuisines:
+        await message.answer(
+            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
+            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
+            reply_markup=cuisine_keyboard()
+        )
+        return
+
+    user_states[message.chat.id]["cuisine"] = message.text
+    user_states[message.chat.id]["step"] = "waiting_diet"
+    await message.answer(
+        "🥗 Есть ли диетические ограничения?\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        reply_markup=diet_keyboard()
+    )
+
+@dp.message(
+    lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_diet"
+)
+async def process_diet_choice(message: types.Message):
+    valid_diets = ["🚫 Нет ограничений", "⚠️ Аллергии", "⚖️ Низкокалорийные",
+                   "💪 Высокобелковые", "☪️ Халяль", "☦️ Постная"]
+
+    if message.text not in valid_diets:
+        await message.answer(
+            "Пожалуйста, выберите вариант из кнопок ↓\n\n"
+            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start", 
+            reply_markup=diet_keyboard()
+        )
+        return
+
+    user_states[message.chat.id]["diet_type"] = message.text
+
+    if message.text == "⚠️ Аллергии":
+        user_states[message.chat.id]["step"] = "waiting_allergies"
+        await message.answer(
+            "📝 Укажите продукты, которые нужно исключить (через запятую):\n"
+            "Пример: орехи, молоко, морепродукты\n\n"
+            "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+    else:
+        user_states[message.chat.id]["step"] = "waiting_ingredients"
+        await ask_for_ingredients(message.chat.id)
+
+async def ask_for_ingredients(chat_id: int):
+    await bot.send_message(
+        chat_id,
+        "📝 Введите ингредиенты через запятую:\n"
+        "Пример: 2 яйца, 100г муки, 1 ст.л. масла\n\n"
+        "ℹ️ Генерация может занять некоторое время. Если бот не реагирует, нажмите /start",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+
+@dp.message(
+    lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_allergies"
+)
+async def process_allergies(message: types.Message):
+    user_states[message.chat.id]["allergies"] = message.text
+    user_states[message.chat.id]["step"] = "waiting_ingredients"
+    await ask_for_ingredients(message.chat.id)
+
+@dp.message(
+    lambda message: user_states.get(message.chat.id, {}).get("step") == "waiting_ingredients"
+)
+async def process_ingredients(message: types.Message):
+    user_states[message.chat.id]["ingredients"] = message.text
+    await message.answer(
+        "🔄 Генерирую рецепт... Пожалуйста, подождите.\n"
+        "Это может занять до 30 секунд.\n\n"
+        "ℹ️ Если бот не реагирует более минуты, нажмите /start",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+    await generate_recipe(message.chat.id)
 
 async def generate_recipe(chat_id: int):
     try:
@@ -151,7 +349,63 @@ async def generate_recipe(chat_id: int):
     finally:
         user_states[chat_id]["step"] = "done"
 
-# [Остальной код без изменений]
+@dp.message()
+async def handle_other(message: types.Message):
+    await message.answer(
+        "Используйте кнопку «🍳 Создать рецепт» или /start\n\n"
+        "ℹ️ Если бот не реагирует, нажмите /start",
+        reply_markup=main_keyboard()
+    )
+
+# ======================
+# ЗАПУСК СЕРВЕРА
+# ======================
+async def on_startup(bot: Bot):
+    webhook_url = os.getenv('WEBHOOK_URL')
+    if webhook_url:
+        await bot.set_webhook(
+            url=f"{webhook_url}/webhook",
+            drop_pending_updates=True
+        )
+        logger.info(f"Вебхук установлен: {webhook_url}")
+    else:
+        logger.warning("WEBHOOK_URL не указан, используем polling")
+
+async def main():
+    # Регистрируем обработчики перед запуском
+    webhook_requests_handler = SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+    )
+    webhook_requests_handler.register(app, path="/webhook")
+    
+    # Настраиваем приложение aiogram
+    setup_application(app, dp, bot=bot)
+    
+    # Выполняем startup действия
+    await on_startup(bot)
+    
+    # Настраиваем и запускаем сервер
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    port = int(os.getenv('WEBHOOK_PORT', 5000))
+    site = web.TCPSite(runner, host='0.0.0.0', port=port)
+    
+    logger.info(f"Сервер запущен на порту {port}")
+    logger.info(f"Вебхук доступен по пути: /webhook")
+    
+    try:
+        await site.start()
+        while True:
+            await asyncio.sleep(3600)
+    except KeyboardInterrupt:
+        logger.info("Получен сигнал остановки")
+    except Exception as e:
+        logger.error(f"Ошибка сервера: {e}")
+    finally:
+        await runner.cleanup()
+        logger.info("Сервер остановлен")
 
 if __name__ == "__main__":
     try:
