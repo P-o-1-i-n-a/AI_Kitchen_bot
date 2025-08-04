@@ -72,7 +72,7 @@ groq_client = Groq(
 )
 
 MODEL_NAME = "llama3-70b-8192"
-CHANNEL_LINK = "https://t.me/ai_kitchen_channel"
+CHANNEL_LINK = os.getenv('CHANNEL_LINK', "https://t.me/ai_kitchen_channel")
 
 # ======================
 # КОНСТАНТЫ И НАСТРОЙКИ
@@ -429,11 +429,15 @@ async def on_startup(bot: Bot):
 
     webhook_url = os.getenv('WEBHOOK_URL')
     if webhook_url:
-        await bot.set_webhook(
-            url=f"{webhook_url}/webhook",
-            drop_pending_updates=True
-        )
-        logger.info(f"Вебхук установлен: {webhook_url}")
+        try:
+            await bot.set_webhook(
+                url=f"{webhook_url}/webhook",
+                drop_pending_updates=True
+            )
+            logger.info(f"Вебхук установлен: {webhook_url}")
+        except Exception as e:
+            logger.error(f"Ошибка установки вебхука: {e}")
+            raise
     else:
         logger.warning("WEBHOOK_URL не указан, используем polling")
 
@@ -451,12 +455,12 @@ async def main():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    port = int(os.getenv('WEBHOOK_PORT', 8000))  # Изменено с 5000 на 8000
+    port = 443  # Используем стандартный порт для HTTPS
     site = web.TCPSite(
         runner, 
         host='0.0.0.0', 
         port=port,
-        reuse_port=True  # Добавлен reuse_port
+        reuse_port=True
     )
     
     logger.info(f"Сервер запущен на порту {port}")
@@ -471,7 +475,7 @@ async def main():
         logger.error(f"Ошибка сервера: {e}")
     finally:
         await runner.cleanup()
-        await bot.session.close()  # Добавлено закрытие сессии
+        await bot.session.close()
         logger.info("Сервер остановлен")
 
 if __name__ == "__main__":
