@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 # ЗАГРУЗКА ПЕРЕМЕННЫХ
 # ======================
 load_dotenv('/etc/secrets/bot_env')
+print("DEBUG: TELEGRAM_BOT_TOKEN =", os.getenv("TELEGRAM_BOT_TOKEN"))
+
 
 # Проверка обязательных переменных
 REQUIRED_KEYS = ['TELEGRAM_BOT_TOKEN', 'GROQ_API_KEY', 'WEBHOOK_URL']
@@ -487,5 +489,6 @@ if __name__ == "__main__":
         logger.info("Бот остановлен")
     except Exception as e:
         logger.error(f"Фатальная ошибка: {e}")
+
 
 
