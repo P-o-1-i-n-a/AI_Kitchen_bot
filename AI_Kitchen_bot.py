@@ -455,10 +455,12 @@ async def main():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    port = 443  # Используем стандартный порт для HTTPS
+    # Используем порт из переменной окружения (8000 по умолчанию)
+    port = int(os.getenv('WEBHOOK_PORT', 8000))  # ← Основное изменение!
+    
     site = web.TCPSite(
         runner, 
-        host='0.0.0.0', 
+        host='127.0.0.1',  # Слушаем только локально ← Важно!
         port=port,
         reuse_port=True
     )
@@ -485,3 +487,4 @@ if __name__ == "__main__":
         logger.info("Бот остановлен")
     except Exception as e:
         logger.error(f"Фатальная ошибка: {e}")
+
