@@ -69,9 +69,8 @@ if MAINTENANCE:
 
 # Конфигурация клиента Groq с увеличенными таймаутами и правильным доменом
 groq_client = Groq(
-    api_key=os.getenv('GROQ_API_KEY').strip('"'),
-    base_url="https://api.groq.com/openai/v1",  # ← Критичное исправление!
-    timeout=httpx.Timeout(30.0, connect=60.0)
+    api_key=os.getenv('GROQ_API_KEY'),
+    base_url="https://api.groq.com/v1"  # ← Убрать /openai!
 )
 
 MODEL_NAME = "llama3-70b-8192"
@@ -490,6 +489,7 @@ if __name__ == "__main__":
         logger.info("Бот остановлен")
     except Exception as e:
         logger.error(f"Фатальная ошибка: {e}")
+
 
 
 
