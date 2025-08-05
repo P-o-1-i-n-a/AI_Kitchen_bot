@@ -167,7 +167,7 @@ def check_diet_conflicts(ingredients: str, diet_type: str, allergies: str = "") 
     forbidden = DIET_RULES[diet_type]["forbidden"]
     
     if diet_type == "⚠️ Аллергии":
-        forbidden = [a.strip().lower() for a in allergies.split(',')]
+        forbidden = [a.strip().lower() for a in allergies.split(',') if a.strip()]
     
     conflicts = []
     for ingredient in ingredients_list:
@@ -279,7 +279,6 @@ async def process_ingredients(message: types.Message):
     await message.answer("🔄 Генерирую рецепт с учетом диетических ограничений...")
     await generate_recipe(message.chat.id)
 
-# --- ГЕНЕРАЦИЯ С ЯНДЕКС GPT ---
 async def generate_recipe(chat_id: int):
     try:
         data = user_states[chat_id]
@@ -298,8 +297,8 @@ async def generate_recipe(chat_id: int):
                 f"- {k} → {v}" for k, v in diet_info["replacements"].items()
             )
 
-        # Разделяем длинный промпт на части для лучшей читаемости
-        prompt_parts = [
+        # Формируем промпт частями
+        prompt_lines = [
             "Ты - профессиональный шеф-повар. Создай рецепт строго по следующим требованиям:",
             "",
             "1. Основные параметры:",
@@ -312,14 +311,14 @@ async def generate_recipe(chat_id: int):
         ]
         
         if data['diet_type'] == "⚠️ Аллергии":
-            prompt_parts.append(f"- Исключи следующие аллергены: {data['allergies']}")
+            prompt_lines.append(f"- Исключи следующие аллергены: {data['allergies']}")
         elif diet_info["forbidden"]:
-            prompt_parts.extend([f"- Исключи {i}" for i in diet_info["forbidden"]])
+            prompt_lines.extend([f"- Исключи {i}" for i in diet_info["forbidden"]])
         
         if diet_info["replacements"]:
-            prompt_parts.extend([f"- Замени {k} на {v}" for k, v in diet_info["replacements"].items()])
+            prompt_lines.extend([f"- Замени {k} на {v}" for k, v in diet_info["replacements"].items()])
         
-        prompt_parts.extend([
+        prompt_lines.extend([
             "",
             "3. Требования к формату:",
             "🍽 Название блюда (укажи тип диеты, если не стандартный)",
@@ -350,7 +349,7 @@ async def generate_recipe(chat_id: int):
             "- По подаче и хранению"
         ])
 
-        prompt = "\n".join(prompt_parts)
+        prompt = "\n".join(prompt_lines)
 
         headers = {
             "Content-Type": "application/json",
@@ -455,4 +454,3 @@ if __name__ == "__main__":
         logger.info("Бот остановлен")
     except Exception as e:
         logger.error(f"Фатальная ошибка: {e}")
-
