@@ -67,9 +67,10 @@ if MAINTENANCE:
     dp.include_router(maintenance_router)
     logger.warning("Бот запущен в режиме обслуживания!")
 
-# Конфигурация клиента Groq с увеличенными таймаутами
+# Конфигурация клиента Groq с увеличенными таймаутами и правильным доменом
 groq_client = Groq(
     api_key=os.getenv('GROQ_API_KEY').strip('"'),
+    base_url="https://api.groq.com/openai/v1",  # ← Критичное исправление!
     timeout=httpx.Timeout(30.0, connect=60.0)
 )
 
@@ -489,6 +490,7 @@ if __name__ == "__main__":
         logger.info("Бот остановлен")
     except Exception as e:
         logger.error(f"Фатальная ошибка: {e}")
+
 
 
 
