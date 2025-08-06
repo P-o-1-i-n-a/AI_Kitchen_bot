@@ -55,26 +55,23 @@ async def generate_recipe(user_data: dict) -> str:
 
 
 def build_prompt(user_data: dict) -> str:
-    """Формирует промт для GPT на основе выбора пользователя"""
-    diet_info = DIET_RULES.get(user_data['diet_type'], {})
-    prompt = [
-        "Сгенерируй рецепт по следующим параметрам:",
-        f"Тип блюда: {user_data['meal_time']}",
+    base_prompt = [
+        "Ты профессиональный шеф-повар. Сгенерируй рецепт по параметрам:",
         f"Кухня: {user_data['cuisine']}",
         f"Диета: {user_data['diet_type']}",
-        f"Ингредиенты: {user_data['ingredients']}",
         "",
         "Требования:",
-        "- Строгий формат: Название, Кухня, Диета, Время приготовления, Ингредиенты, Пошаговый рецепт, КБЖУ",
-        "- Учитывай диетические ограничения",
-        "- Предлагай замены для несоответствующих ингредиентов",
-        "- Никогда не предлагай поискать в интернете"
+        "- Учет диетических ограничений",
+        "- Точный расчет КБЖУ на порцию",
+        "- Четкая пошаговая инструкция"
     ]
-
-    if user_data['diet_type'] == "⚠️ Аллергии":
-        prompt.append(f"Исключить аллергены: {user_data.get('allergies', '')}")
-
-    return "\n".join(prompt)
+    
+    if user_data['search_method'] == "by_name":
+        base_prompt.insert(1, f"Название блюда: {user_data['dish_name']}")
+    else:
+        base_prompt.insert(1, f"Ингредиенты: {user_data['ingredients']}")
+    
+    return "\n".join(base_prompt)
 
 
 def clean_recipe_text(text: str) -> str:
@@ -86,4 +83,5 @@ def clean_recipe_text(text: str) -> str:
     ]
     for phrase in unwanted_phrases:
         text = text.replace(phrase, "")
+
     return text.strip()
