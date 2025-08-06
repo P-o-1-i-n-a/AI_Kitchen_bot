@@ -7,7 +7,38 @@ from bot.keyboards.recipe import (
 )
 from bot.states import user_states, DIET_RULES
 
+async def ask_search_method(message: types.Message):
+    """Запрос способа поиска рецепта"""
+    user_states[message.chat.id] = {"step": "waiting_search_method"}
+    await message.answer(
+        "Выберите способ поиска рецепта:",
+        reply_markup=search_method_keyboard()
+    )
 
+async def handle_by_name(message: types.Message):
+    """Обработка выбора 'По названию'"""
+    user_states[message.chat.id].update({
+        "search_method": "by_name",
+        "step": "waiting_dish_name"
+    })
+    await message.answer("Введите название блюда:", reply_markup=types.ReplyKeyboardRemove())
+
+async def handle_by_ingredients(message: types.Message):
+    """Обработка выбора 'По ингредиентам'"""
+    user_states[message.chat.id].update({
+        "search_method": "by_ingredients",
+        "step": "waiting_ingredients"
+    })
+    await message.answer(
+        "📝 Введите ингредиенты через запятую:\nПример: яйца, мука, молоко",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+
+def register_handlers(dp):
+    dp.message.register(ask_search_method, F.text == "🍳 Создать рецепт")
+    dp.message.register(handle_by_name, F.text == "🔍 По названию блюда")
+    dp.message.register(handle_by_ingredients, F.text == "🥕 По ингредиентам")
+    
 async def ask_meal_time(message: types.Message):
     """Запрашивает время приёма пищи"""
     user_states[message.chat.id] = {"step": "waiting_meal_time"}
@@ -47,4 +78,5 @@ def register_handlers(dp):
     """Регистрирует обработчики потока создания рецепта"""
     dp.message.register(ask_meal_time, F.text == "🍳 Создать рецепт")
     dp.message.register(ask_cuisine, lambda msg: user_states.get(msg.chat.id, {}).get("step") == "waiting_meal_time")
+
     dp.message.register(ask_diet, lambda msg: user_states.get(msg.chat.id, {}).get("step") == "waiting_cuisine")
