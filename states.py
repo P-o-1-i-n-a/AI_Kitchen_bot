@@ -77,6 +77,9 @@ DIET_RULES = {
 
 # Возможные шаги пользователя
 USER_STEPS = {
+    "waiting_search_method": "выбор способа поиска",
+    "waiting_dish_name": "ввод названия блюда",
+    "waiting_ingredients": "ввод ингредиентов",
     "waiting_meal_time": "ожидает выбора времени приема пищи",
     "waiting_cuisine": "ожидает выбора кухни",
     "waiting_diet": "ожидает выбора диеты",
@@ -87,4 +90,5 @@ USER_STEPS = {
 
 def reset_user_state(chat_id: int):
     """Сбрасывает состояние пользователя"""
+
     user_states[chat_id] = {"step": "waiting_meal_time"}
