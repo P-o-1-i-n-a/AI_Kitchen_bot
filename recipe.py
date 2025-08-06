@@ -1,5 +1,16 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
+def search_method_keyboard():
+    """Клавиатура выбора способа поиска"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🔍 По названию блюда")],
+            [KeyboardButton(text="🥕 По ингредиентам")],
+            [KeyboardButton(text="↩️ Назад")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
 def meal_time_keyboard():
     """Клавиатура выбора времени приёма пищи"""
     return ReplyKeyboardMarkup(
@@ -35,4 +46,5 @@ def diet_keyboard():
         ],
         resize_keyboard=True,
         one_time_keyboard=True
+
     )
