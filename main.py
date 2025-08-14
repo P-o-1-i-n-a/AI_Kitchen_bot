@@ -63,12 +63,13 @@ async def echo_message(message: types.Message):
     except Exception as e:
         logger.error(f"Ошибка в echo_message: {e}")
 
-# --- Запуск бота ---
 if __name__ == "__main__":
     try:
         logger.info("Запуск бота...")
         executor.start_polling(dp, skip_updates=True)
+        
+        # Бесконечный цикл для удержания процесса
+        while True:
+            await asyncio.sleep(3600)  # Просто ждём
     except Exception as e:
-        logger.critical(f"Бот остановлен с ошибкой: {e}")
-    finally:
-        logger.info("Бот завершил работу")
+        logger.critical(f"Бот остановлен: {e}")
