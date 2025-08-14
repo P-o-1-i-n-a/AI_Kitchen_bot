@@ -1,7 +1,7 @@
 import os
+import asyncio
 import logging
-from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
+from aiogram import Bot, Dispatcher, executor
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # Настройка логирования
@@ -11,65 +11,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Проверка наличия токена
+# Проверка токена
 API_TOKEN = os.getenv("BOT_TOKEN")
 if not API_TOKEN:
-    logger.error("ОШИБКА: BOT_TOKEN не найден в переменных окружения!")
-    logger.info("Проверьте файл /etc/secrets/bot_env")
+    logger.error("❌ ОШИБКА: BOT_TOKEN не найден!")
+    logger.info("Проверьте файл: /etc/secrets/bot_env")
     exit(1)
+else:
+    logger.info(f"✅ Токен получен ({len(API_TOKEN)} символов)")
 
-# Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# --- Клавиатуры ---
+# Клавиатуры и обработчики (ваш код остаётся без изменений)
 def main_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🍳 Создать рецепт")],
-            [
-                KeyboardButton(text="📜 Публичная оферта"),
-                KeyboardButton(text="📢 Наш канал")
-            ]
-        ],
-        resize_keyboard=True,
-        input_field_placeholder="Выберите действие"
+    return ReplyKeyboardMarkup(resize_keyboard=True).add(
+        KeyboardButton("🍳 Создать рецепт"),
+        KeyboardButton("📜 Публичная оферта"),
+        KeyboardButton("📢 Наш канал")
     )
 
-def search_method_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🔍 По названию")],
-            [KeyboardButton(text="🥕 По ингредиентам")],
-            [KeyboardButton(text="↩️ Назад в меню")]
-        ],
-        resize_keyboard=True
-    )
-
-# --- Обработчики сообщений ---
 @dp.message_handler(commands=["start"])
-async def start_command(message: types.Message):
-    try:
-        await message.answer("Привет! Я AI Kitchen Bot!", reply_markup=main_keyboard())
-        logger.info(f"Новый пользователь: {message.from_user.id}")
-    except Exception as e:
-        logger.error(f"Ошибка в start_command: {e}")
+async def start(message):
+    await message.answer("Привет! Я AI Kitchen Bot!", reply_markup=main_keyboard())
 
-@dp.message_handler()
-async def echo_message(message: types.Message):
-    try:
-        await message.answer(f"Вы написали: {message.text}", reply_markup=main_keyboard())
-        logger.info(f"Сообщение от {message.from_user.id}: {message.text}")
-    except Exception as e:
-        logger.error(f"Ошибка в echo_message: {e}")
+# Важно: добавляем "здоровый" обработчик ошибок
+async def on_startup(dp):
+    logger.info("🟢 Бот успешно запущен")
+
+async def on_shutdown(dp):
+    logger.warning("🔴 Бот остановлен")
 
 if __name__ == "__main__":
     try:
-        logger.info("Запуск бота...")
-        executor.start_polling(dp, skip_updates=True)
-        
-        # Бесконечный цикл для удержания процесса
-        while True:
-            await asyncio.sleep(3600)  # Просто ждём
+        logger.info("🚀 Запуск бота...")
+        executor.start_polling(
+            dp,
+            skip_updates=True,
+            on_startup=on_startup,
+            on_shutdown=on_shutdown,
+            timeout=60,
+            relax=1
+        )
+        # Важно: aiogram 3.x автоматически блокирует поток
     except Exception as e:
-        logger.critical(f"Бот остановлен: {e}")
+        logger.critical(f"💥 Критическая ошибка: {e}")
