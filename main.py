@@ -10,9 +10,9 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Проверка токена
-if not (API_TOKEN := os.getenv("BOT_TOKEN")):
-    logger.critical("❌ BOT_TOKEN не найден в переменных окружения!")
+# Проверка токена (ищем TELEGRAM_BOT_TOKEN)
+if not (API_TOKEN := os.getenv("TELEGRAM_BOT_TOKEN")):
+    logger.critical("❌ TELEGRAM_BOT_TOKEN не найден в переменных окружения!")
     exit(1)
 
 bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
